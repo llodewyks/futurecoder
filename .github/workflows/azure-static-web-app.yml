@@ -116,6 +116,25 @@ jobs:
           find deploy -maxdepth 2 -type d -print
           BASH
 
+      - name: Locate and copy python_core.tar / python_stdlib.zip
+        run: |
+          set -e
+          echo "Searching for python_core.tar and python_stdlib.zip..."
+          CORE_PATH="$(find . -type f -name 'python_core.tar' | head -n1 || true)"
+          STDLIB_PATH="$(find . -type f -name 'python_stdlib.zip' | head -n1 || true)"
+          echo "CORE_PATH=${CORE_PATH}"
+          echo "STDLIB_PATH=${STDLIB_PATH}"
+      
+          # Ensure deploy/course exists
+          mkdir -p deploy/course
+      
+          # Copy if found
+          if [ -n "$CORE_PATH" ]; then cp -f "$CORE_PATH" deploy/course/python_core.tar; fi
+          if [ -n "$STDLIB_PATH" ]; then cp -f "$STDLIB_PATH" deploy/course/python_stdlib.zip; fi
+      
+          echo "Deployed course root contents:"
+          ls -la deploy/course | sed -n '1,200p'
+
       - name: Vendor Pyodide core archives (python_core & stdlib)
         run: |
             set -e
@@ -129,11 +148,11 @@ jobs:
 
       - name: Verify pyodide core exists in deploy
         run: |
-          ls -la deploy/course/pyodide || true
-          # core files should be present from the build
-          test -f deploy/course/pyodide/pyodide.asm.js || echo "pyodide.asm.js not found (ok if using other backend)"
-          # at least the directory must exist
           test -d deploy/course/pyodide
+          # these two must be present at course root for the runtime
+          test -f deploy/course/python_core.tar
+          test -f deploy/course/python_stdlib.zip
+
 
       # --- Deploy to Azure Static Web Apps (upload only; skip Oryx) ---
       - name: Deploy
