@@ -130,6 +130,8 @@ jobs:
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
+              
+               { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_stdlib.zip" },
       
               { "route": "/course/static/*",   "serve": "/course/static/*"   },
               { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
@@ -145,8 +147,7 @@ jobs:
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
       
               { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
-              { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_stdlib.zip" },
-      
+                   
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
