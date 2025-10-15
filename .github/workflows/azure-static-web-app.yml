@@ -34,6 +34,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Override CRA homepage to relative URLs
+        working-directory: frontend
+        run: |
+          node -e "let p=require('./package.json'); p.homepage='.'; require('fs').writeFileSync('package.json', JSON.stringify(p,null,2)); console.log('homepage now', p.homepage)"
+
       - name: Install and build frontend
         working-directory: frontend
         env:
@@ -62,5 +68,5 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: upload
-          app_location: "frontend/build"              # repo root
+          app_location: "frontend/course"              # repo root
           skip_app_build: true
