@@ -36,13 +36,18 @@ jobs:
           poetry install --no-root
           ./scripts/generate.sh
 
-      # --- Node phase (project build script) ---
+           # --- Node phase (install deps + project build script) ---
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # Keep CRA assets on relative URLs (so they work under /course/)
+      # Ensure frontend/node_modules exists so "craco" is available
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # (Optional) Keep CRA assets on relative URLs in case the app isn't forcing /course
       - name: Override CRA homepage to relative URLs
         working-directory: frontend
         run: |
@@ -55,45 +60,45 @@ jobs:
           REACT_APP_FIREBASE_STAGING: '1'
           CI: false
         run: |
+          chmod +x scripts/build.sh
           ./scripts/build.sh
 
-      # --- Verify course output & core archives ---
+      # --- Figure out where the build landed (dist/course or frontend/course) ---
+      - name: Detect course output dir
+        id: outdir
+        run: |
+          if [ -d dist/course ]; then
+            echo "dir=dist/course" >> $GITHUB_OUTPUT
+          elif [ -d frontend/course ]; then
+            echo "dir=frontend/course" >> $GITHUB_OUTPUT
+          else
+            echo "No course output found"; exit 1
+          fi
+          echo "Detected output dir: $(cat $GITHUB_OUTPUT)"
+
       - name: Verify course output & core archives
         run: |
-          bash -eo pipefail <<'BASH'
-          echo "frontend/course (dirs):"
-          find frontend/course -maxdepth 2 -type d -print
-          # must exist
-          test -f frontend/course/index.html
-          test -d frontend/course/pyodide
-          # these are what the runtime requests at /course/…
-          # if your build puts versioned filenames, we'll normalize next
-          ls -la frontend/course | sed -n '1,200p'
-          BASH
-
-      - name: Normalize core archive names if versioned
-        run: |
-          bash -eo pipefail <<'BASH'
-          CORE=$(find frontend/course -type f -name 'python_core*.tar' | head -n1 || true)
-          STDLIB=$(find frontend/course -type f -name 'python_stdlib*.zip' | head -n1 || true)
-          if [ -n "$CORE" ] && [ ! -f frontend/course/python_core.tar ]; then
-            cp -f "$CORE" frontend/course/python_core.tar
-          fi
-          if [ -n "$STDLIB" ] && [ ! -f frontend/course/python_stdlib.zip ]; then
-            cp -f "$STDLIB" frontend/course/python_stdlib.zip
-          fi
-          test -f frontend/course/python_core.tar
-          test -f frontend/course/python_stdlib.zip
-          BASH
+          OUT="${{ steps.outdir.outputs.dir }}"
+          echo "Listing $OUT"
+          find "$OUT" -maxdepth 2 -type d -print
+          test -f "$OUT/index.html"
+          test -d "$OUT/pyodide" || (echo "missing $OUT/pyodide" && exit 1)
+          # normalize core archive names to the paths the app requests
+          CORE=$(find "$OUT" -type f -name 'python_core*.tar' | head -n1 || true)
+          STDLIB=$(find "$OUT" -type f -name 'python_stdlib*.zip' | head -n1 || true)
+          if [ -n "$CORE" ] && [ ! -f "$OUT/python_core.tar" ]; then cp -f "$CORE" "$OUT/python_core.tar"; fi
+          if [ -n "$STDLIB" ] && [ ! -f "$OUT/python_stdlib.zip" ]; then cp -f "$STDLIB" "$OUT/python_stdlib.zip"; fi
+          test -f "$OUT/python_core.tar"
+          test -f "$OUT/python_stdlib.zip"
 
       # --- Stage deploy/ for SWA (keep /course path) ---
       - name: Stage files for SWA
         run: |
-          bash -eo pipefail <<'BASH'
+          OUT="${{ steps.outdir.outputs.dir }}"
           set -e
           rm -rf deploy
           mkdir -p deploy/course
-          cp -R frontend/course/* deploy/course/
+          cp -R "$OUT"/* deploy/course/
 
           # Root -> /course/
           cat > deploy/index.html <<'HTML'
@@ -136,19 +141,16 @@ jobs:
           echo "Deploy tree (top levels):"
           find deploy -maxdepth 2 -type d -print
           ls -la deploy/course | sed -n '1,200p'
-          BASH
 
       # --- Final sanity: files that must exist in the artifact ---
       - name: Verify deploy artifact essentials
         run: |
-          bash -eo pipefail <<'BASH'
           test -f deploy/course/index.html
           test -d deploy/course/pyodide
           test -f deploy/course/python_core.tar
           test -f deploy/course/python_stdlib.zip
-          BASH
 
-      # --- Upload to SWA (no server build; just upload) ---
+      # --- Upload to SWA (upload only; skip Oryx) ---
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
         with:
