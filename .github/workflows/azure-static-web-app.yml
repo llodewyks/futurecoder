@@ -145,6 +145,7 @@ jobs:
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
 
               { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
+              { "route": "/course/*python_core.tar*",  "serve": "/course/python_stdlib.zip" },
 
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
