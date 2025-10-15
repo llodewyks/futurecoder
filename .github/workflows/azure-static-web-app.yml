@@ -76,47 +76,69 @@ jobs:
           fi
           echo "Detected output dir: $(cat $GITHUB_OUTPUT)"
 
-      - name: Verify course output & core archives
+      - name: Verify & normalize core archives
+        id: norm
         run: |
-          OUT="${{ steps.outdir.outputs.dir }}"
-          echo "Listing $OUT"
+          # Use the detected OUT if you have that step; else default to dist/course
+          OUT="${{ steps.outdir.outputs.dir || 'dist/course' }}"
+          echo "OUT=$OUT"
+      
+          echo "Tree (2 levels):"
           find "$OUT" -maxdepth 2 -type d -print
+      
+          # Show what's in pyodide
+          echo "Listing $OUT/pyodide:"
+          ls -la "$OUT/pyodide" || true
+      
+          # Find versioned core/stdlib files anywhere under OUT
+          CORE="$(find "$OUT" -type f -name 'python_core*.tar' | head -n1 || true)"
+          STDLIB="$(find "$OUT" -type f -name 'python_stdlib*.zip' | head -n1 || true)"
+          echo "Found CORE=$CORE"
+          echo "Found STDLIB=$STDLIB"
+      
+          # If found, copy/normalize to the exact paths the runtime requests
+          if [ -n "$CORE" ]; then cp -f "$CORE" "$OUT/python_core.tar"; fi
+          if [ -n "$STDLIB" ]; then cp -f "$STDLIB" "$OUT/python_stdlib.zip"; fi
+      
+          # Hard requirements from here on:
           test -f "$OUT/index.html"
-          test -d "$OUT/pyodide" || (echo "missing $OUT/pyodide" && exit 1)
-          # normalize core archive names to the paths the app requests
-          CORE=$(find "$OUT" -type f -name 'python_core*.tar' | head -n1 || true)
-          STDLIB=$(find "$OUT" -type f -name 'python_stdlib*.zip' | head -n1 || true)
-          if [ -n "$CORE" ] && [ ! -f "$OUT/python_core.tar" ]; then cp -f "$CORE" "$OUT/python_core.tar"; fi
-          if [ -n "$STDLIB" ] && [ ! -f "$OUT/python_stdlib.zip" ]; then cp -f "$STDLIB" "$OUT/python_stdlib.zip"; fi
+          test -d "$OUT/pyodide"
           test -f "$OUT/python_core.tar"
           test -f "$OUT/python_stdlib.zip"
+      
+          echo "Course root after normalization:"
+          ls -la "$OUT" | sed -n '1,200p'
+      
+          # Export OUT so later steps reuse it
+          echo "dir=$OUT" >> "$GITHUB_OUTPUT"
+
 
       # --- Stage deploy/ for SWA (keep /course path) ---
       - name: Stage files for SWA
         run: |
-          OUT="${{ steps.outdir.outputs.dir }}"
+          OUT="${{ steps.norm.outputs.dir || 'dist/course' }}"
           set -e
           rm -rf deploy
           mkdir -p deploy/course
           cp -R "$OUT"/* deploy/course/
-
+      
           # Root -> /course/
           cat > deploy/index.html <<'HTML'
           <!DOCTYPE html>
           <meta http-equiv="refresh" content="0; url=/course/">
           HTML
-
+      
           # SWA routes: serve assets first, then SPA fallback
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
-
+      
               { "route": "/course/static/*",   "serve": "/course/static/*"   },
               { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
               { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
               { "route": "/course/packages/*", "serve": "/course/packages/*" },
-
+      
               { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
               { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
               { "route": "/course/*.data",     "serve": "/course/*.data"     },
@@ -124,10 +146,10 @@ jobs:
               { "route": "/course/*.css",      "serve": "/course/*.css"      },
               { "route": "/course/*.map",      "serve": "/course/*.map"      },
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
-
+      
               { "route": "/course/python_core.tar*",   "serve": "/course/python_core.tar" },
               { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
-
+      
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
@@ -137,10 +159,11 @@ jobs:
             }
           }
           JSON
-
-          echo "Deploy tree (top levels):"
+      
+          echo "Deploy tree:"
           find deploy -maxdepth 2 -type d -print
           ls -la deploy/course | sed -n '1,200p'
+
 
       # --- Final sanity: files that must exist in the artifact ---
       - name: Verify deploy artifact essentials
