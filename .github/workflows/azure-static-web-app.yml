@@ -54,35 +54,39 @@ jobs:
           npm run build
           if [ -f "../course/service-worker.js" ]; then cp ../course/service-worker.js public/service-worker.js; fi
 
-           - name: Verify build output
-            run: |
+      - name: Verify build output
+        run: |
+          bash -eo pipefail <<'BASH'
           echo "frontend/course (summary):"
           find frontend/course -maxdepth 2 -type d -print
           # must exist:
           test -f frontend/course/index.html
-          # pyodide folder produced by the build should already exist:
+          # pyodide dir should be there:
           test -d frontend/course/pyodide
+          BASH
+
 
       # --- Stage deploy/ with /course and SWA routing rules ---
       - name: Stage files for SWA
         run: |
+          bash -eo pipefail <<'BASH'
           set -e
           rm -rf deploy
           mkdir -p deploy/course
           cp -R frontend/course/* deploy/course/
-
+      
           # root -> /course/
           cat > deploy/index.html <<'HTML'
           <!DOCTYPE html>
           <meta http-equiv="refresh" content="0; url=/course/">
           HTML
-
+      
           # SWA routes: serve assets first, then SPA fallback
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
-
+      
               { "route": "/course/static/*",   "serve": "/course/static/*"   },
               { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
               { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
@@ -94,7 +98,7 @@ jobs:
               { "route": "/course/*.css",      "serve": "/course/*.css"      },
               { "route": "/course/*.map",      "serve": "/course/*.map"      },
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
-
+      
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
@@ -104,9 +108,11 @@ jobs:
             }
           }
           JSON
-
+      
           echo "Show top-level folders in deploy:"
           find deploy -maxdepth 2 -type d -print
+          BASH
+
 
       - name: Verify pyodide core exists in deploy
         run: |
