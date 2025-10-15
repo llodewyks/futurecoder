@@ -68,50 +68,54 @@ jobs:
       - name: Stage files for SWA
         run: |
           rm -rf deploy
-            mkdir -p deploy/course
-            cp -R frontend/course/* deploy/course/
-            
-            # Root redirect to /course/
-            cat > deploy/index.html <<'HTML'
-            <!DOCTYPE html>
-            <meta http-equiv="refresh" content="0; url=/course/">
-            HTML
-          - name: Stage files for SWA
-            run: |
-            rm -rf deploy
-              mkdir -p deploy/course
-              cp -R frontend/course/* deploy/course/
-          
-              # Root redirect to /course/
-              cat > deploy/index.html <<'HTML'
-              <!DOCTYPE html>
-              <meta http-equiv="refresh" content="0; url=/course/">
-              HTML
-          
-              # SWA routes: serve assets first, then SPA rewrite
-              cat > deploy/staticwebapp.config.json <<'JSON'
-              {
-                "routes": [
-                  { "route": "/", "redirect": "/course/", "statusCode": 302 },
-          
-                  { "route": "/course/static/*",  "serve": "/course/static/*"  },
-                  { "route": "/course/pyodide/*", "serve": "/course/pyodide/*" },
-                  { "route": "/course/*.js",      "serve": "/course/*.js"      },
-                  { "route": "/course/*.css",     "serve": "/course/*.css"     },
-                  { "route": "/course/*.map",     "serve": "/course/*.map"     },
-                  { "route": "/course/*.wasm",    "serve": "/course/*.wasm"    },
-                  { "route": "/course/*.json",    "serve": "/course/*.json"    },
-          
-                  { "route": "/course/*", "rewrite": "/course/index.html" }
-                ],
-                "mimeTypes": { ".wasm": "application/wasm" }
-              }
-              JSON
-          
-              echo "Verifying:"
-              ls -la deploy || true
-              ls -la deploy/course || true
-              test -f deploy/course/index.html
+          mkdir -p deploy/course
+          cp -R frontend/course/* deploy/course/
+      
+          # root -> /course/
+          cat > deploy/index.html <<'HTML'
+          <!DOCTYPE html>
+          <meta http-equiv="refresh" content="0; url=/course/">
+          HTML
+      
+          # Serve static + package assets explicitly, then SPA fallback
+          cat > deploy/staticwebapp.config.json <<'JSON'
+          {
+            "routes": [
+              { "route": "/", "redirect": "/course/", "statusCode": 302 },
+      
+              { "route": "/course/static/*",   "serve": "/course/static/*"   },
+              { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
+              { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
+              { "route": "/course/packages/*", "serve": "/course/packages/*" },
+              { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
+              { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
+              { "route": "/course/*.data",     "serve": "/course/*.data"     },
+              { "route": "/course/*.js",       "serve": "/course/*.js"       },
+              { "route": "/course/*.css",      "serve": "/course/*.css"      },
+              { "route": "/course/*.map",      "serve": "/course/*.map"      },
+              { "route": "/course/*.json",     "serve": "/course/*.json"     },
+      
+              { "route": "/course/*", "rewrite": "/course/index.html" }
+            ],
+            "mimeTypes": {
+              ".wasm": "application/wasm",
+              ".whl":  "application/octet-stream",
+              ".data": "application/octet-stream"
+            }
+          }
+          JSON
+      
+          echo "Show top-level folders:"
+          find deploy/course -maxdepth 2 -type d -print
+
+      - name: Verify package folders exist
+        run: |
+          echo "Expect wheels/packages here:"
+          ls -la deploy/course/wheels || true
+          ls -la deploy/course/packages || true
+          # hard fail if neither exists
+          if [ ! -d deploy/course/wheels ] && [ ! -d deploy/course/packages ]; then
+            echo "No wheels/packages folder found in build output."; exit 1; fi
 
 
       - name: Deploy
