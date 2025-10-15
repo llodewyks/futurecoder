@@ -18,10 +18,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12.1'
+
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
           echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Make scripts executable
+        run: chmod +x scripts/generate.sh || true
+
       - name: Generate site content
         env:
           FUTURECODER_LANGUAGE: en
@@ -29,7 +34,7 @@ jobs:
           poetry install --no-root
           ./scripts/generate.sh
 
-      # --- Node build phase (frontend bundle) ---
+      # --- Node build phase (frontend bundle -> outputs under frontend/course) ---
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -47,28 +52,25 @@ jobs:
         run: |
           npm ci
           npm run build
-          # If the project expects a service worker from the course folder, copy it if present
           if [ -f "../course/service-worker.js" ]; then cp ../course/service-worker.js public/service-worker.js; fi
 
-           - name: Verify build output
-            run: |
+      - name: Verify build output
+        run: |
           echo "frontend contents:"
           ls -la frontend || true
           echo "frontend/course contents:"
           ls -la frontend/course || true
-          # ensure the SPA entry exists
           test -f frontend/course/index.html
 
-      # (Removed) Add SWA routing config inside frontend/course (redundant)
-      # We will ship a single config at deploy/staticwebapp.config.json instead.
-
+      # --- Stage deploy/ with /course under it and SWA routing rules ---
       - name: Stage files for SWA
         run: |
+          set -e
           rm -rf deploy
           mkdir -p deploy/course
           cp -R frontend/course/* deploy/course/
 
-          # Root -> /course/
+          # root -> /course/
           cat > deploy/index.html <<'HTML'
           <!DOCTYPE html>
           <meta http-equiv="refresh" content="0; url=/course/">
@@ -102,9 +104,10 @@ jobs:
           }
           JSON
 
-          echo "Show top-level folders:"
-          find deploy/course -maxdepth 2 -type d -print
+          echo "Show top-level folders in deploy:"
+          find deploy -maxdepth 2 -type d -print
 
+      # --- Vendor Pyodide core (so /course/pyodide/* exists) ---
       - name: Vendor Pyodide full runtime and a few wheels
         run: |
           set -e
@@ -118,22 +121,21 @@ jobs:
           curl -fsSL "$BASE/pyodide.asm.data"  -o deploy/course/pyodide/pyodide.asm.data
           curl -fsSL "$BASE/repodata.json"     -o deploy/course/pyodide/repodata.json
 
-          echo "Prime a few common wheels (optional):"
+          echo "Prime a few common wheels (optional)..."
           for pkg in micropip pyparsing packaging; do
             curl -fsSL "$BASE/$pkg.whl" -o "deploy/course/pyodide/$pkg.whl" || true
           done
 
-          echo "Staged files:"
+          echo "Staged files under deploy/course/pyodide:"
           ls -la deploy/course/pyodide
 
       - name: Verify pyodide core exists
         run: |
-          ls -la deploy/course || true
-          ls -la deploy/course/pyodide || true
           test -f deploy/course/pyodide/pyodide.js
           test -f deploy/course/pyodide/pyodide.asm.wasm
           test -f deploy/course/pyodide/repodata.json
 
+      # --- Deploy to Azure Static Web Apps (upload only; skip Oryx) ---
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
         with:
