@@ -36,18 +36,17 @@ jobs:
           poetry install --no-root
           ./scripts/generate.sh
 
-           # --- Node phase (install deps + project build script) ---
+      # --- Node phase (install deps + project build script) ---
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # Ensure frontend/node_modules exists so "craco" is available
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
-      # (Optional) Keep CRA assets on relative URLs in case the app isn't forcing /course
+      # Keep CRA assets on relative URLs in case the app isn't forcing /course
       - name: Override CRA homepage to relative URLs
         working-directory: frontend
         run: |
@@ -60,7 +59,6 @@ jobs:
           REACT_APP_FIREBASE_STAGING: '1'
           CI: false
         run: |
-          chmod +x scripts/build.sh
           ./scripts/build.sh
 
       # --- Figure out where the build landed (dist/course or frontend/course) ---
@@ -79,67 +77,65 @@ jobs:
       - name: Verify & normalize core archives
         id: norm
         run: |
-          OUT="dist/course"  # or ${{ steps.outdir.outputs.dir }} if you kept that step
+          OUT="${{ steps.outdir.outputs.dir }}"
           echo "OUT=$OUT"
-      
+
           echo "Tree (2 levels):"
           find "$OUT" -maxdepth 2 -type d -print
-      
+
           echo "Listing $OUT/pyodide:"
           ls -la "$OUT/pyodide" || true
-      
+
           # Find stdlib and (optional) core
           CORE="$(find "$OUT" -type f -name 'python_core*.tar' | head -n1 || true)"
           STDLIB="$(find "$OUT" -type f -name 'python_stdlib*.zip' | head -n1 || true)"
           echo "Found CORE=$CORE"
           echo "Found STDLIB=$STDLIB"
-      
+
           # Normalize: always copy stdlib to course root; core only if present
           if [ -n "$STDLIB" ]; then cp -f "$STDLIB" "$OUT/python_stdlib.zip"; fi
           if [ -n "$CORE" ];  then cp -f "$CORE"  "$OUT/python_core.tar"; fi
-      
+
           # Must-haves
           test -f "$OUT/index.html"
           test -d "$OUT/pyodide"
           test -f "$OUT/python_stdlib.zip"   # required
-      
+
           # Optional: core tar (don’t fail if absent)
           if [ -f "$OUT/python_core.tar" ]; then echo "python_core.tar present"; else echo "python_core.tar not present (ok)"; fi
-      
+
           echo "Course root after normalization:"
           ls -la "$OUT" | sed -n '1,200p'
-      
-          echo "dir=$OUT" >> "$GITHUB_OUTPUT"
 
+          echo "dir=$OUT" >> "$GITHUB_OUTPUT"
 
       # --- Stage deploy/ for SWA (keep /course path) ---
       - name: Stage files for SWA
         run: |
           bash -eo pipefail <<'BASH'
           set -e
+          OUT="${{ steps.norm.outputs.dir || steps.outdir.outputs.dir || 'dist/course' }}"
           rm -rf deploy
           mkdir -p deploy/course
-          # if you have OUT from a prior step, use it; else default to dist/course
-          OUT="${OUT:-dist/course}"
           cp -R "$OUT"/* deploy/course/
-      
+
           # Root -> /course/
           cat > deploy/index.html <<'HTML'
           <!DOCTYPE html>
           <meta http-equiv="refresh" content="0; url=/course/">
           HTML
-      
+
           # SWA routes: serve assets first, then SPA fallback
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
-      
+
               { "route": "/course/static/*",   "serve": "/course/static/*"   },
               { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
               { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
               { "route": "/course/packages/*", "serve": "/course/packages/*" },
-      
+
               { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
               { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
               { "route": "/course/*.data",     "serve": "/course/*.data"     },
@@ -147,9 +143,9 @@ jobs:
               { "route": "/course/*.css",      "serve": "/course/*.css"      },
               { "route": "/course/*.map",      "serve": "/course/*.map"      },
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
-      
+
               { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
-      
+
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
@@ -159,20 +155,24 @@ jobs:
             }
           }
           JSON
-      
+
           echo "Deploy tree:"
           find deploy -maxdepth 2 -type d -print
           ls -la deploy/course | sed -n '1,200p'
           BASH
-
 
       # --- Final sanity: files that must exist in the artifact ---
       - name: Verify deploy artifact essentials
         run: |
           test -f deploy/course/index.html
           test -d deploy/course/pyodide
-          test -f deploy/course/python_core.tar
-          test -f deploy/course/python_stdlib.zip
+          test -f deploy/course/python_stdlib.zip    # required by runtime
+          # python_core.tar is optional in recent Pyodide builds
+          if [ -f deploy/course/python_core.tar ]; then
+            echo "python_core.tar present (optional)";
+          else
+            echo "python_core.tar not present (ok)";
+          fi
 
       # --- Upload to SWA (upload only; skip Oryx) ---
       - name: Deploy
