@@ -122,26 +122,26 @@ jobs:
           set -e
           mkdir -p deploy/course/pyodide
       
-          # candidate versions and filenames (we'll take the first that exists)
-          VERSIONS="0.26.4 0.26.3 0.26.2 0.26.1 0.26.0 0.25.1 0.25.0 0.24.1"
-          FILES_CORE="python_core-3.12.1.tar python_core.tar"
-          FILES_STDLIB="python_stdlib-3.12.1.zip python_stdlib.zip"
+          # Candidate Pyodide versions (newest first)
+          VERSIONS="0.27.2 0.27.1 0.27.0 0.26.4 0.26.3 0.26.2 0.26.1 0.26.0 0.25.1 0.25.0 0.24.1"
+          # Candidate filenames for Python 3.12 series + legacy names
+          FILES_CORE="python_core-3.12.2.tar python_core-3.12.1.tar python_core.tar"
+          FILES_STDLIB="python_stdlib-3.12.2.zip python_stdlib-3.12.1.zip python_stdlib.zip"
       
           fetch_first () {
             ver="$1"; shift
             base="https://cdn.jsdelivr.net/pyodide/v${ver}/full"
             for f in "$@"; do
-              echo "Trying $base/$f"
+              >&2 echo "Trying $base/$f"
               if curl -fsSL "$base/$f" -o "deploy/course/pyodide/$f"; then
-                echo "Fetched $f from v$ver"
-                echo "$f"
+                echo "$f"   # IMPORTANT: only filename to STDOUT
                 return 0
               fi
             done
             return 1
           }
       
-          # Try to fetch core
+          # Try core
           CORE_FILE=""
           for v in $VERSIONS; do
             if CORE_FILE="$(fetch_first "$v" $FILES_CORE)"; then break; fi
@@ -150,7 +150,7 @@ jobs:
             echo "ERROR: Could not fetch python_core archive from known versions"; exit 1
           fi
       
-          # Try to fetch stdlib
+          # Try stdlib
           STDLIB_FILE=""
           for v in $VERSIONS; do
             if STDLIB_FILE="$(fetch_first "$v" $FILES_STDLIB)"; then break; fi
@@ -166,6 +166,7 @@ jobs:
           echo "Deployed files:"
           ls -la deploy/course/pyodide | sed -n '1,200p'
           ls -la deploy/course | sed -n '1,200p'
+
 
       - name: Locate and copy python_core.tar / python_stdlib.zip
         run: |
