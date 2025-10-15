@@ -98,6 +98,9 @@ jobs:
               { "route": "/course/*.css",      "serve": "/course/*.css"      },
               { "route": "/course/*.map",      "serve": "/course/*.map"      },
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
+
+              { "route": "/course/python_core.tar*",   "serve": "/course/pyodide/python_core.tar"   },
+              { "route": "/course/python_stdlib.zip*", "serve": "/course/pyodide/python_stdlib.zip" },
       
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
@@ -113,6 +116,16 @@ jobs:
           find deploy -maxdepth 2 -type d -print
           BASH
 
+      - name: Vendor Pyodide core archives (python_core & stdlib)
+        run: |
+            set -e
+            PYODIDE_VER=0.24.1
+            BASE="https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VER}/full"
+            mkdir -p deploy/course/pyodide
+            # Fetch the core tar and stdlib zip expected by the runtime
+            curl -fsSL "$BASE/python_core.tar"    -o deploy/course/pyodide/python_core.tar
+            curl -fsSL "$BASE/python_stdlib.zip"  -o deploy/course/pyodide/python_stdlib.zip
+            ls -la deploy/course/pyodide
 
       - name: Verify pyodide core exists in deploy
         run: |
