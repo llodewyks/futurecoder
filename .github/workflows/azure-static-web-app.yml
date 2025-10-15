@@ -44,6 +44,18 @@ jobs:
           # If the project expects a service worker from the course folder, copy it if present
           if [ -f "../course/service-worker.js" ]; then cp ../course/service-worker.js public/service-worker.js; fi
 
+      - name: Verify build output
+        run: |
+          echo "Repo root contents:"
+          ls -la
+          echo "frontend contents:"
+          ls -la frontend || true
+          echo "frontend/build contents:"
+          ls -la frontend/build || true
+          # hard fail if the built index.html is missing
+          test -f frontend/build/index.html
+    
+
       # --- Deploy to Azure Static Web Apps ---
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
