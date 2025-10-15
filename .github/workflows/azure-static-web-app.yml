@@ -1,0 +1,52 @@
+name: Deploy futurecoder to Azure Static Web Apps
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- Python build phase (futurecoder content generation) ---
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+      - name: Generate site content
+        env:
+          FUTURECODER_LANGUAGE: en
+        run: |
+          poetry install --no-root
+          ./scripts/generate.sh
+
+      # --- Node build phase (frontend bundle) ---
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          # If the project expects a service worker from the course folder, copy it if present
+          if [ -f "../course/service-worker.js" ]; then cp ../course/service-worker.js public/service-worker.js; fi
+
+      # --- Deploy to Azure Static Web Apps ---
+      - name: Deploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: "/"              # repo root
+          output_location: "frontend/build"  # final static files
