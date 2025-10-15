@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Python build phase (futurecoder content generation) ---
+      # --- Python phase (dependencies + content generation) ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -24,49 +24,69 @@ jobs:
           curl -sSL https://install.python-poetry.org | python3 -
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Make scripts executable
-        run: chmod +x scripts/generate.sh || true
+      - name: Make project scripts executable
+        run: |
+          chmod +x scripts/generate.sh || true
+          chmod +x scripts/build.sh || true
 
-      - name: Generate site content
+      - name: Generate site content (translations/static files)
         env:
           FUTURECODER_LANGUAGE: en
         run: |
           poetry install --no-root
           ./scripts/generate.sh
 
-      # --- Node build phase (frontend bundle -> outputs under frontend/course) ---
+      # --- Node phase (project build script) ---
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
+      # Keep CRA assets on relative URLs (so they work under /course/)
       - name: Override CRA homepage to relative URLs
         working-directory: frontend
         run: |
           node -e "let p=require('./package.json'); p.homepage='.'; require('fs').writeFileSync('package.json', JSON.stringify(p,null,2)); console.log('homepage now', p.homepage)"
 
-      - name: Install and build frontend
-        working-directory: frontend
+      - name: Build with project script
         env:
+          FUTURECODER_LANGUAGE: en
+          REACT_APP_USE_FIREBASE_EMULATORS: '1'
+          REACT_APP_FIREBASE_STAGING: '1'
           CI: false
         run: |
-          npm ci
-          npm run build
-          if [ -f "../course/service-worker.js" ]; then cp ../course/service-worker.js public/service-worker.js; fi
+          ./scripts/build.sh
 
-      - name: Verify build output
+      # --- Verify course output & core archives ---
+      - name: Verify course output & core archives
         run: |
           bash -eo pipefail <<'BASH'
-          echo "frontend/course (summary):"
+          echo "frontend/course (dirs):"
           find frontend/course -maxdepth 2 -type d -print
-          # must exist:
+          # must exist
           test -f frontend/course/index.html
-          # pyodide dir should be there:
           test -d frontend/course/pyodide
+          # these are what the runtime requests at /course/…
+          # if your build puts versioned filenames, we'll normalize next
+          ls -la frontend/course | sed -n '1,200p'
           BASH
 
+      - name: Normalize core archive names if versioned
+        run: |
+          bash -eo pipefail <<'BASH'
+          CORE=$(find frontend/course -type f -name 'python_core*.tar' | head -n1 || true)
+          STDLIB=$(find frontend/course -type f -name 'python_stdlib*.zip' | head -n1 || true)
+          if [ -n "$CORE" ] && [ ! -f frontend/course/python_core.tar ]; then
+            cp -f "$CORE" frontend/course/python_core.tar
+          fi
+          if [ -n "$STDLIB" ] && [ ! -f frontend/course/python_stdlib.zip ]; then
+            cp -f "$STDLIB" frontend/course/python_stdlib.zip
+          fi
+          test -f frontend/course/python_core.tar
+          test -f frontend/course/python_stdlib.zip
+          BASH
 
-      # --- Stage deploy/ with /course and SWA routing rules ---
+      # --- Stage deploy/ for SWA (keep /course path) ---
       - name: Stage files for SWA
         run: |
           bash -eo pipefail <<'BASH'
@@ -74,23 +94,24 @@ jobs:
           rm -rf deploy
           mkdir -p deploy/course
           cp -R frontend/course/* deploy/course/
-      
-          # root -> /course/
+
+          # Root -> /course/
           cat > deploy/index.html <<'HTML'
           <!DOCTYPE html>
           <meta http-equiv="refresh" content="0; url=/course/">
           HTML
-      
+
           # SWA routes: serve assets first, then SPA fallback
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
-      
+
               { "route": "/course/static/*",   "serve": "/course/static/*"   },
               { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
               { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
               { "route": "/course/packages/*", "serve": "/course/packages/*" },
+
               { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
               { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
               { "route": "/course/*.data",     "serve": "/course/*.data"     },
@@ -99,9 +120,9 @@ jobs:
               { "route": "/course/*.map",      "serve": "/course/*.map"      },
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
 
-              { "route": "/course/python_core.tar*",   "serve": "/course/pyodide/python_core.tar"   },
-              { "route": "/course/python_stdlib.zip*", "serve": "/course/pyodide/python_stdlib.zip" },
-      
+              { "route": "/course/python_core.tar*",   "serve": "/course/python_core.tar" },
+              { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
+
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
@@ -111,102 +132,23 @@ jobs:
             }
           }
           JSON
-      
-          echo "Show top-level folders in deploy:"
+
+          echo "Deploy tree (top levels):"
           find deploy -maxdepth 2 -type d -print
+          ls -la deploy/course | sed -n '1,200p'
           BASH
 
-
-      - name: Fetch python_core/stdlib and place at course root
+      # --- Final sanity: files that must exist in the artifact ---
+      - name: Verify deploy artifact essentials
         run: |
-          set -e
-          mkdir -p deploy/course/pyodide
-      
-          # Candidate Pyodide versions (newest first)
-          VERSIONS="0.27.2 0.27.1 0.27.0 0.26.4 0.26.3 0.26.2 0.26.1 0.26.0 0.25.1 0.25.0 0.24.1"
-          # Candidate filenames for Python 3.12 series + legacy names
-          FILES_CORE="python_core-3.12.2.tar python_core-3.12.1.tar python_core.tar"
-          FILES_STDLIB="python_stdlib-3.12.2.zip python_stdlib-3.12.1.zip python_stdlib.zip"
-      
-          fetch_first () {
-            ver="$1"; shift
-            base="https://cdn.jsdelivr.net/pyodide/v${ver}/full"
-            for f in "$@"; do
-              >&2 echo "Trying $base/$f"
-              if curl -fsSL "$base/$f" -o "deploy/course/pyodide/$f"; then
-                echo "$f"   # IMPORTANT: only filename to STDOUT
-                return 0
-              fi
-            done
-            return 1
-          }
-      
-          # Try core
-          CORE_FILE=""
-          for v in $VERSIONS; do
-            if CORE_FILE="$(fetch_first "$v" $FILES_CORE)"; then break; fi
-          done
-          if [ -z "$CORE_FILE" ]; then
-            echo "ERROR: Could not fetch python_core archive from known versions"; exit 1
-          fi
-      
-          # Try stdlib
-          STDLIB_FILE=""
-          for v in $VERSIONS; do
-            if STDLIB_FILE="$(fetch_first "$v" $FILES_STDLIB)"; then break; fi
-          done
-          if [ -z "$STDLIB_FILE" ]; then
-            echo "ERROR: Could not fetch python_stdlib archive from known versions"; exit 1
-          fi
-      
-          # Copy to the exact paths the app requests (course root)
-          cp -f "deploy/course/pyodide/$CORE_FILE"   deploy/course/python_core.tar
-          cp -f "deploy/course/pyodide/$STDLIB_FILE" deploy/course/python_stdlib.zip
-      
-          echo "Deployed files:"
-          ls -la deploy/course/pyodide | sed -n '1,200p'
-          ls -la deploy/course | sed -n '1,200p'
-
-
-      - name: Locate and copy python_core.tar / python_stdlib.zip
-        run: |
-          set -e
-          echo "Searching for python_core.tar and python_stdlib.zip..."
-          CORE_PATH="$(find . -type f -name 'python_core.tar' | head -n1 || true)"
-          STDLIB_PATH="$(find . -type f -name 'python_stdlib.zip' | head -n1 || true)"
-          echo "CORE_PATH=${CORE_PATH}"
-          echo "STDLIB_PATH=${STDLIB_PATH}"
-      
-          # Ensure deploy/course exists
-          mkdir -p deploy/course
-      
-          # Copy if found
-          if [ -n "$CORE_PATH" ]; then cp -f "$CORE_PATH" deploy/course/python_core.tar; fi
-          if [ -n "$STDLIB_PATH" ]; then cp -f "$STDLIB_PATH" deploy/course/python_stdlib.zip; fi
-      
-          echo "Deployed course root contents:"
-          ls -la deploy/course | sed -n '1,200p'
-
-      - name: Vendor Pyodide core archives (python_core & stdlib)
-        run: |
-            set -e
-            PYODIDE_VER=0.24.1
-            BASE="https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VER}/full"
-            mkdir -p deploy/course/pyodide
-            # Fetch the core tar and stdlib zip expected by the runtime
-            curl -fsSL "$BASE/python_core.tar"    -o deploy/course/pyodide/python_core.tar
-            curl -fsSL "$BASE/python_stdlib.zip"  -o deploy/course/pyodide/python_stdlib.zip
-            ls -la deploy/course/pyodide
-
-      - name: Verify pyodide core exists in deploy
-        run: |
+          bash -eo pipefail <<'BASH'
+          test -f deploy/course/index.html
           test -d deploy/course/pyodide
-          # these two must be present at course root for the runtime
           test -f deploy/course/python_core.tar
           test -f deploy/course/python_stdlib.zip
+          BASH
 
-
-      # --- Deploy to Azure Static Web Apps (upload only; skip Oryx) ---
+      # --- Upload to SWA (no server build; just upload) ---
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
         with:
