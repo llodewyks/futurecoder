@@ -50,39 +50,36 @@ jobs:
           # If the project expects a service worker from the course folder, copy it if present
           if [ -f "../course/service-worker.js" ]; then cp ../course/service-worker.js public/service-worker.js; fi
 
-      - name: Verify build output
-        run: |
+           - name: Verify build output
+            run: |
           echo "frontend contents:"
           ls -la frontend || true
           echo "frontend/course contents:"
           ls -la frontend/course || true
-            test -f frontend/course/index.html
+          # ensure the SPA entry exists
+          test -f frontend/course/index.html
 
-      - name: Add SWA routing config
-        run: |
-          cat > frontend/course/staticwebapp.config.json <<'JSON'
-          { "routes": [ { "route": "/*", "serve": "/index.html", "statusCode": 200 } ] }
-          JSON
-
+      # (Removed) Add SWA routing config inside frontend/course (redundant)
+      # We will ship a single config at deploy/staticwebapp.config.json instead.
 
       - name: Stage files for SWA
         run: |
           rm -rf deploy
           mkdir -p deploy/course
           cp -R frontend/course/* deploy/course/
-      
-          # root -> /course/
+
+          # Root -> /course/
           cat > deploy/index.html <<'HTML'
           <!DOCTYPE html>
           <meta http-equiv="refresh" content="0; url=/course/">
           HTML
-      
-          # Serve static + package assets explicitly, then SPA fallback
+
+          # SWA routes: serve assets first, then SPA fallback
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
-      
+
               { "route": "/course/static/*",   "serve": "/course/static/*"   },
               { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
               { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
@@ -94,7 +91,7 @@ jobs:
               { "route": "/course/*.css",      "serve": "/course/*.css"      },
               { "route": "/course/*.map",      "serve": "/course/*.map"      },
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
-      
+
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
@@ -104,18 +101,9 @@ jobs:
             }
           }
           JSON
-      
+
           echo "Show top-level folders:"
           find deploy/course -maxdepth 2 -type d -print
-
-      - name: Verify package folders exist
-        run: |
-          echo "Expect wheels/packages here:"
-          ls -la deploy/course/wheels || true
-          ls -la deploy/course/packages || true
-          # hard fail if neither exists
-          if [ ! -d deploy/course/wheels ] && [ ! -d deploy/course/packages ]; then
-            echo "No wheels/packages folder found in build output."; exit 1; fi
 
       - name: Vendor Pyodide full runtime and a few wheels
         run: |
@@ -123,26 +111,33 @@ jobs:
           PYODIDE_VER=0.24.1
           BASE="https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VER}/full"
           mkdir -p deploy/course/pyodide
-      
+
           echo "Fetch core runtime..."
           curl -fsSL "$BASE/pyodide.js"        -o deploy/course/pyodide/pyodide.js
           curl -fsSL "$BASE/pyodide.asm.wasm"  -o deploy/course/pyodide/pyodide.asm.wasm
           curl -fsSL "$BASE/pyodide.asm.data"  -o deploy/course/pyodide/pyodide.asm.data
           curl -fsSL "$BASE/repodata.json"     -o deploy/course/pyodide/repodata.json
-      
-          echo "Prime a few common wheels (add more if Network tab shows 404s):"
+
+          echo "Prime a few common wheels (optional):"
           for pkg in micropip pyparsing packaging; do
             curl -fsSL "$BASE/$pkg.whl" -o "deploy/course/pyodide/$pkg.whl" || true
           done
-      
+
           echo "Staged files:"
           ls -la deploy/course/pyodide
+
+      - name: Verify pyodide core exists
+        run: |
+          ls -la deploy/course || true
+          ls -la deploy/course/pyodide || true
+          test -f deploy/course/pyodide/pyodide.js
+          test -f deploy/course/pyodide/pyodide.asm.wasm
+          test -f deploy/course/pyodide/repodata.json
 
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
         with:
-            azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-            action: upload
-            app_location: "deploy"   # <-- correct folder
-            skip_app_build: true
-
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: "deploy"
+          skip_app_build: true
