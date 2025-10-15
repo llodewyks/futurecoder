@@ -50,23 +50,26 @@ jobs:
           # If the project expects a service worker from the course folder, copy it if present
           if [ -f "../course/service-worker.js" ]; then cp ../course/service-worker.js public/service-worker.js; fi
 
-      - name: Verify build output
-        run: |
-          echo "Repo root contents:"
-          ls -la
-          echo "frontend contents:"
-          ls -la frontend || true
-          echo "frontend/build contents:"
-          ls -la frontend/build || true
-          # hard fail if the built index.html is missing
-          test -f frontend/build/index.html
-    
+- name: Verify build output
+  run: |
+    echo "frontend contents:"
+    ls -la frontend || true
+    echo "frontend/course contents:"
+    ls -la frontend/course || true
+    # hard fail if the built index.html is missing
+    test -f frontend/course/index.html
 
-      # --- Deploy to Azure Static Web Apps ---
-      - name: Deploy
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          action: upload
-          app_location: "frontend/course"              # repo root
-          skip_app_build: true
+    - name: Add SWA routing config
+  run: |
+    cat > frontend/course/staticwebapp.config.json <<'JSON'
+    { "routes": [ { "route": "/*", "serve": "/index.html", "statusCode": 200 } ] }
+    JSON
+
+    - name: Deploy
+  uses: Azure/static-web-apps-deploy@v1
+  with:
+    azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+    action: upload
+    app_location: "frontend/course"   # <-- correct folder
+    skip_app_build: true
+
