@@ -117,6 +117,26 @@ jobs:
           if [ ! -d deploy/course/wheels ] && [ ! -d deploy/course/packages ]; then
             echo "No wheels/packages folder found in build output."; exit 1; fi
 
+      - name: Vendor Pyodide full runtime and a few wheels
+        run: |
+          set -e
+          PYODIDE_VER=0.24.1
+          BASE="https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VER}/full"
+          mkdir -p deploy/course/pyodide
+      
+          echo "Fetch core runtime..."
+          curl -fsSL "$BASE/pyodide.js"        -o deploy/course/pyodide/pyodide.js
+          curl -fsSL "$BASE/pyodide.asm.wasm"  -o deploy/course/pyodide/pyodide.asm.wasm
+          curl -fsSL "$BASE/pyodide.asm.data"  -o deploy/course/pyodide/pyodide.asm.data
+          curl -fsSL "$BASE/repodata.json"     -o deploy/course/pyodide/repodata.json
+      
+          echo "Prime a few common wheels (add more if Network tab shows 404s):"
+          for pkg in micropip pyparsing packaging; do
+            curl -fsSL "$BASE/$pkg.whl" -o "deploy/course/pyodide/$pkg.whl" || true
+          done
+      
+          echo "Staged files:"
+          ls -la deploy/course/pyodide
 
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
