@@ -70,23 +70,49 @@ jobs:
           rm -rf deploy
             mkdir -p deploy/course
             cp -R frontend/course/* deploy/course/
+            
             # Root redirect to /course/
             cat > deploy/index.html <<'HTML'
             <!DOCTYPE html>
             <meta http-equiv="refresh" content="0; url=/course/">
             HTML
-            # SWA routes so deep links under /course work
-            cat > deploy/staticwebapp.config.json <<'JSON'
-            {
-              "routes": [
-                { "route": "/", "redirect": "/course/", "statusCode": 302 },
-                { "route": "/course/*", "rewrite": "/course/index.html" }
-              ]
-            }
-            JSON
-            ls -la deploy || true
-            ls -la deploy/course || true
-            test -f deploy/course/index.html
+          - name: Stage files for SWA
+            run: |
+            rm -rf deploy
+              mkdir -p deploy/course
+              cp -R frontend/course/* deploy/course/
+          
+              # Root redirect to /course/
+              cat > deploy/index.html <<'HTML'
+              <!DOCTYPE html>
+              <meta http-equiv="refresh" content="0; url=/course/">
+              HTML
+          
+              # SWA routes: serve assets first, then SPA rewrite
+              cat > deploy/staticwebapp.config.json <<'JSON'
+              {
+                "routes": [
+                  { "route": "/", "redirect": "/course/", "statusCode": 302 },
+          
+                  { "route": "/course/static/*",  "serve": "/course/static/*"  },
+                  { "route": "/course/pyodide/*", "serve": "/course/pyodide/*" },
+                  { "route": "/course/*.js",      "serve": "/course/*.js"      },
+                  { "route": "/course/*.css",     "serve": "/course/*.css"     },
+                  { "route": "/course/*.map",     "serve": "/course/*.map"     },
+                  { "route": "/course/*.wasm",    "serve": "/course/*.wasm"    },
+                  { "route": "/course/*.json",    "serve": "/course/*.json"    },
+          
+                  { "route": "/course/*", "rewrite": "/course/index.html" }
+                ],
+                "mimeTypes": { ".wasm": "application/wasm" }
+              }
+              JSON
+          
+              echo "Verifying:"
+              ls -la deploy || true
+              ls -la deploy/course || true
+              test -f deploy/course/index.html
+
 
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
