@@ -118,24 +118,24 @@ jobs:
           rm -rf deploy
           mkdir -p deploy/course
           cp -R "$OUT"/* deploy/course/
-
+      
           # Root -> /course/
           cat > deploy/index.html <<'HTML'
           <!DOCTYPE html>
           <meta http-equiv="refresh" content="0; url=/course/">
           HTML
-
-          # SWA routes: serve assets first, then SPA fallback
+      
+          # Valid JSON only — no comments/trailing commas
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
-
+      
               { "route": "/course/static/*",   "serve": "/course/static/*"   },
               { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
               { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
               { "route": "/course/packages/*", "serve": "/course/packages/*" },
-
+      
               { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
               { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
               { "route": "/course/*.data",     "serve": "/course/*.data"     },
@@ -143,10 +143,10 @@ jobs:
               { "route": "/course/*.css",      "serve": "/course/*.css"      },
               { "route": "/course/*.map",      "serve": "/course/*.map"      },
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
-
+      
               { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
-              { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_stdlib.zip" }
-
+              { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_stdlib.zip" },
+      
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
@@ -157,10 +157,7 @@ jobs:
             }
           }
           JSON
-
-          echo "Deploy tree:"
-          find deploy -maxdepth 2 -type d -print
-          ls -la deploy/course | sed -n '1,200p'
+      
           BASH
 
       # --- Final sanity: files that must exist in the artifact ---
