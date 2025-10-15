@@ -145,14 +145,15 @@ jobs:
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
 
               { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
-              { "route": "/course/*python_core.tar*",  "serve": "/course/python_stdlib.zip" },
+              { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_stdlib.zip" }
 
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
               ".wasm": "application/wasm",
               ".whl":  "application/octet-stream",
-              ".data": "application/octet-stream"
+              ".data": "application/octet-stream",
+              ".load_by_url": "application/octet-stream"
             }
           }
           JSON
