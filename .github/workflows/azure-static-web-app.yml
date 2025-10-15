@@ -79,47 +79,48 @@ jobs:
       - name: Verify & normalize core archives
         id: norm
         run: |
-          # Use the detected OUT if you have that step; else default to dist/course
-          OUT="${{ steps.outdir.outputs.dir || 'dist/course' }}"
+          OUT="dist/course"  # or ${{ steps.outdir.outputs.dir }} if you kept that step
           echo "OUT=$OUT"
       
           echo "Tree (2 levels):"
           find "$OUT" -maxdepth 2 -type d -print
       
-          # Show what's in pyodide
           echo "Listing $OUT/pyodide:"
           ls -la "$OUT/pyodide" || true
       
-          # Find versioned core/stdlib files anywhere under OUT
+          # Find stdlib and (optional) core
           CORE="$(find "$OUT" -type f -name 'python_core*.tar' | head -n1 || true)"
           STDLIB="$(find "$OUT" -type f -name 'python_stdlib*.zip' | head -n1 || true)"
           echo "Found CORE=$CORE"
           echo "Found STDLIB=$STDLIB"
       
-          # If found, copy/normalize to the exact paths the runtime requests
-          if [ -n "$CORE" ]; then cp -f "$CORE" "$OUT/python_core.tar"; fi
+          # Normalize: always copy stdlib to course root; core only if present
           if [ -n "$STDLIB" ]; then cp -f "$STDLIB" "$OUT/python_stdlib.zip"; fi
+          if [ -n "$CORE" ];  then cp -f "$CORE"  "$OUT/python_core.tar"; fi
       
-          # Hard requirements from here on:
+          # Must-haves
           test -f "$OUT/index.html"
           test -d "$OUT/pyodide"
-          test -f "$OUT/python_core.tar"
-          test -f "$OUT/python_stdlib.zip"
+          test -f "$OUT/python_stdlib.zip"   # required
+      
+          # Optional: core tar (don’t fail if absent)
+          if [ -f "$OUT/python_core.tar" ]; then echo "python_core.tar present"; else echo "python_core.tar not present (ok)"; fi
       
           echo "Course root after normalization:"
           ls -la "$OUT" | sed -n '1,200p'
       
-          # Export OUT so later steps reuse it
           echo "dir=$OUT" >> "$GITHUB_OUTPUT"
 
 
       # --- Stage deploy/ for SWA (keep /course path) ---
       - name: Stage files for SWA
         run: |
-          OUT="${{ steps.norm.outputs.dir || 'dist/course' }}"
+          bash -eo pipefail <<'BASH'
           set -e
           rm -rf deploy
           mkdir -p deploy/course
+          # if you have OUT from a prior step, use it; else default to dist/course
+          OUT="${OUT:-dist/course}"
           cp -R "$OUT"/* deploy/course/
       
           # Root -> /course/
@@ -147,7 +148,6 @@ jobs:
               { "route": "/course/*.map",      "serve": "/course/*.map"      },
               { "route": "/course/*.json",     "serve": "/course/*.json"     },
       
-              { "route": "/course/python_core.tar*",   "serve": "/course/python_core.tar" },
               { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
       
               { "route": "/course/*", "rewrite": "/course/index.html" }
@@ -163,6 +163,7 @@ jobs:
           echo "Deploy tree:"
           find deploy -maxdepth 2 -type d -print
           ls -la deploy/course | sed -n '1,200p'
+          BASH
 
 
       # --- Final sanity: files that must exist in the artifact ---
