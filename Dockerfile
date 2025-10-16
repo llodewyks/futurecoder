@@ -1,76 +1,71 @@
-# ---------- BUILD STAGE ----------
-FROM node:22-bullseye AS build
+# ---------- build stage ----------
+FROM python:3.12.1-slim AS build
+
+ARG NODE_MAJOR=22
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    POETRY_VERSION=1.8.5 \
+    # futurecoder build expects these; adjust if you want to use production Firebase etc.
+    FUTURECODER_LANGUAGE=en \
+    REACT_APP_USE_FIREBASE_EMULATORS=1 \
+    REACT_APP_FIREBASE_STAGING=1 \
+    CI=false
+
+# system deps + Node.js
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl ca-certificates gnupg git build-essential; \
+    curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash -; \
+    apt-get install -y --no-install-recommends nodejs; \
+    node -v && npm -v; \
+    rm -rf /var/lib/apt/lists/*
+
+# Poetry
+RUN set -eux; \
+    curl -sSL https://install.python-poetry.org | python3 -; \
+    ln -s /root/.local/bin/poetry /usr/local/bin/poetry; \
+    poetry --version
+
 WORKDIR /app
 
-# Python + curl for the project scripts
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-venv python3-pip curl ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+# Install Python deps first (better layer caching)
+COPY pyproject.toml poetry.lock ./
+RUN set -eux; \
+    poetry config virtualenvs.in-project true; \
+    poetry install --no-root --no-interaction --no-ansi
 
-# Copy repo
+# Bring in the rest of the project
 COPY . .
+RUN chmod +x scripts/*.sh || true
 
-# Frontend deps (craco etc.)
-RUN npm --prefix frontend ci
+# Build the site (show each failing command clearly)
+RUN set -eux; \
+    poetry --version; \
+    poetry install --no-root -v; \
+    ./scripts/generate.sh; \
+    ./scripts/build.sh
 
-# Poetry for the Python bits
-RUN curl -sSL https://install.python-poetry.org | python3 - \
- && echo 'export PATH="$HOME/.local/bin:$PATH"' >> /root/.bashrc
-ENV PATH="/root/.local/bin:${PATH}"
+# After build, the static site should be in dist/course
+# Validate the build output early (this will fail the build if something’s missing)
+RUN set -eux; \
+    test -d dist/course; \
+    test -f dist/course/index.html; \
+    test -d dist/course/pyodide; \
+    # stdlib is required by pyodide loader
+    test -f dist/course/python_stdlib.zip || (echo "python_stdlib.zip missing" && false)
 
-# Generate translations/static files and build the site
-RUN poetry --version \
- && poetry install --no-root \
- && ./scripts/generate.sh \
- && ./scripts/build.sh
+# ---------- runtime stage ----------
+FROM nginx:alpine AS runtime
 
-# Normalize Pyodide artifacts so the app (and our server) can fetch them deterministically
-# - Ensure python_stdlib.zip is at /course/
-# - Ensure python_core.tar is at /course/ (download the official core tar if not produced)
-RUN bash -e <<'BASH'
-OUT="dist/course"
-test -d "$OUT" && test -f "$OUT/index.html"
+# Nginx serves on 80
+EXPOSE 80
 
-# stdlib to root
-if [ -f "$OUT/pyodide/python_stdlib.zip" ] && [ ! -f "$OUT/python_stdlib.zip" ]; then
-  cp "$OUT/pyodide/python_stdlib.zip" "$OUT/python_stdlib.zip"
-fi
-test -f "$OUT/python_stdlib.zip"
-
-# core tar to root (download official core if missing)
-if [ ! -f "$OUT/python_core.tar" ]; then
-  VER=$(node -p "require('./${OUT}/pyodide/package.json').version")
-  echo "Pyodide version: $VER"
-  for U in \
-    "https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2" \
-    "https://repo.pyodide.org/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2" \
-    "https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2?download=1" ; do
-    echo "Trying $U"
-    if curl -LfsS "$U" -o "$OUT/python_core.tar"; then
-      break
-    fi
-  done
-fi
-
-# Sanity: non-empty + starts with BZh (bzip2)
-test -s "$OUT/python_core.tar"
-head -c 3 "$OUT/python_core.tar" | grep -q 'BZh'
-BASH
-
-
-# ---------- RUNTIME STAGE ----------
-FROM nginx:1.27-alpine
-# Extra MIME types for Pyodide bits
-RUN printf "\n  types {\n    application/wasm wasm;\n    application/octet-stream whl data;\n    application/x-bzip2 bz2 bz;\n  }\n" >> /etc/nginx/mime.types
-
-# Nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Static site goes under /usr/share/nginx/html/course
+# Copy the built site under /usr/share/nginx/html
 COPY --from=build /app/dist/course /usr/share/nginx/html/course
 
-# Health check (optional)
-RUN echo "ok" > /usr/share/nginx/html/healthz
+# Optional: redirect root to /course/
+RUN printf '<!doctype html><meta http-equiv="refresh" content="0; url=/course/">' \
+    > /usr/share/nginx/html/index.html
 
-EXPOSE 80
+# Minimal nginx config (default works fine for static)
 CMD ["nginx", "-g", "daemon off;"]
