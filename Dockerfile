@@ -38,6 +38,9 @@ RUN set -eux; \
 COPY . .
 RUN chmod +x scripts/*.sh || true
 
+# ✅ Install frontend deps so "craco" exists
+RUN npm ci --prefix frontend
+
 # Build the site (show each failing command clearly)
 RUN set -eux; \
     poetry --version; \
