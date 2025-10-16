@@ -129,9 +129,9 @@ jobs:
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
-             { "route": "/", "redirect": "/course/", "statusCode": 302 },
-
-              { "route": "/course/*python_core.tar*", "serve": "/course/python_core.tar" },
+              { "route": "/", "redirect": "/course/", "statusCode": 302 },
+          
+              { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_core.tar" },
           
               { "route": "/course/static/*",   "serve": "/course/static/*"   },
               { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
