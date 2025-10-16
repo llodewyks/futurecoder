@@ -129,33 +129,33 @@ jobs:
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
-              { "route": "/", "redirect": "/course/", "statusCode": 302 },
-              
-               { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_stdlib.zip" },
-      
-              { "route": "/course/static/*",   "serve": "/course/static/*"   },
-              { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
-              { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
-              { "route": "/course/packages/*", "serve": "/course/packages/*" },
-      
-              { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
-              { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
-              { "route": "/course/*.data",     "serve": "/course/*.data"     },
-              { "route": "/course/*.js",       "serve": "/course/*.js"       },
-              { "route": "/course/*.css",      "serve": "/course/*.css"      },
-              { "route": "/course/*.map",      "serve": "/course/*.map"      },
-              { "route": "/course/*.json",     "serve": "/course/*.json"     },
-      
-              { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
-                   
-              { "route": "/course/*", "rewrite": "/course/index.html" }
+               { "route": "/", "redirect": "/course/", "statusCode": 302 },
+
+                { "route": "/course/static/js/static/media/python_core.tar*", "rewrite": "/course/python_stdlib.zip" },
+            
+                { "route": "/course/static/*",   "serve": "/course/static/*"   },
+                { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
+                { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
+                { "route": "/course/packages/*", "serve": "/course/packages/*" },
+            
+                { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
+                { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
+                { "route": "/course/*.data",     "serve": "/course/*.data"     },
+                { "route": "/course/*.js",       "serve": "/course/*.js"       },
+                { "route": "/course/*.css",      "serve": "/course/*.css"      },
+                { "route": "/course/*.map",      "serve": "/course/*.map"      },
+                { "route": "/course/*.json",     "serve": "/course/*.json"     },
+            
+                { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
+            
+                { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
-            "mimeTypes": {
+          "mimeTypes": {
               ".wasm": "application/wasm",
               ".whl":  "application/octet-stream",
               ".data": "application/octet-stream",
               ".load_by_url": "application/octet-stream"
-            }
+                      }
           }
           JSON
       
@@ -173,6 +173,10 @@ jobs:
           else
             echo "python_core.tar not present (ok)";
           fi
+
+      - name: Assert stdlib present
+        run: test -f deploy/course/python_stdlib.zip
+
 
       # --- Upload to SWA (upload only; skip Oryx) ---
       - name: Deploy
