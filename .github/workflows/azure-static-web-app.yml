@@ -129,9 +129,9 @@ jobs:
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
-               { "route": "/", "redirect": "/course/", "statusCode": 302 },
-
-                { "route": "/course/static/js/static/media/python_core.tar*", "rewrite": "/course/python_stdlib.zip" },
+             { "route": "/", "redirect": "/course/", "statusCode": 302 },
+            
+                { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_core.tar" },
             
                 { "route": "/course/static/*",   "serve": "/course/static/*"   },
                 { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
@@ -151,15 +151,41 @@ jobs:
                 { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
           "mimeTypes": {
-              ".wasm": "application/wasm",
-              ".whl":  "application/octet-stream",
-              ".data": "application/octet-stream",
-              ".load_by_url": "application/octet-stream"
+            ".wasm": "application/wasm",
+            ".whl":  "application/octet-stream",
+            ".data": "application/octet-stream",
+            ".load_by_url": "application/octet-stream"
                       }
           }
           JSON
       
           BASH
+
+      - name: Vendor Pyodide core tar (python_core.tar)
+        run: |
+          set -e
+          # Read version from the built files
+          OUT="${{ steps.norm.outputs.dir || steps.outdir.outputs.dir || 'dist/course' }}"
+          VER="$(jq -r .version "$OUT/pyodide/package.json" 2>/dev/null || node -p 'require("./'"$OUT"'/pyodide/package.json").version')"
+          echo "Pyodide version: $VER"
+      
+          mkdir -p deploy/course
+          # Try jsDelivr first, then GitHub releases as fallback
+          URL_JSDELIVR="https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
+          URL_GH="https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2"
+      
+          echo "Fetching core from $URL_JSDELIVR ..."
+          if ! curl -fsSL "$URL_JSDELIVR" -o deploy/course/python_core.tar ; then
+            echo "jsDelivr failed; trying GitHub release $URL_GH ..."
+            curl -fsSL "$URL_GH" -o deploy/course/python_core.tar
+          fi
+      
+          # Sanity: it should be a bzip2 tar (magic check)
+          file deploy/course/python_core.tar || true
+          # Ensure non-empty
+          test -s deploy/course/python_core.tar
+
+
 
       # --- Final sanity: files that must exist in the artifact ---
       - name: Verify deploy artifact essentials
@@ -176,6 +202,11 @@ jobs:
 
       - name: Assert stdlib present
         run: test -f deploy/course/python_stdlib.zip
+
+      - name: Assert core & stdlib present
+        run: |
+          test -f deploy/course/python_stdlib.zip
+          test -s deploy/course/python_core.tar
 
 
       # --- Upload to SWA (upload only; skip Oryx) ---
