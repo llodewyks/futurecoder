@@ -130,6 +130,7 @@ jobs:
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
+               { "route": "/course/python_core.tar*", "serve": "/course/python_core.tar" },
           
               { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_core.tar" },
           
@@ -177,23 +178,32 @@ jobs:
           fi
           test -s deploy/course/python_core.tar
       
-      - name: Replace hashed python_core.load_by_url files with the real tar
-        run: |
+           - name: Replace hashed python_core.load_by_url files with the real tar (any path)
+            run: |
           set -e
           CORE="deploy/course/python_core.tar"
-          test -s "$CORE"
-          echo "Looking for hashed placeholders under /static/js/static/media/…"
-          mapfile -t TARGETS < <(find deploy/course -type f -path "*/static/js/static/media/python_core.tar*.load_by_url" | sort || true)
+          test -s "$CORE"  # must exist and be non-empty
+      
+          echo "Searching for ANY placeholders named python_core.tar*.load_by_url under deploy/course…"
+          mapfile -t TARGETS < <(find deploy/course -type f -name "python_core.tar*.load_by_url" | sort || true)
+      
           if [ "${#TARGETS[@]}" -eq 0 ]; then
-            echo "No hashed python_core.tar*.load_by_url files found."; exit 0
+            echo "No placeholders found. Showing a few candidate paths for context:"
+            find deploy/course -maxdepth 4 -type d -path "*/static/js*" -print || true
+            exit 0
           fi
-          printf 'Found %s target(s):\n' "${#TARGETS[@]}"
+      
+          echo "Found ${#TARGETS[@]} target(s):"
           printf '%s\n' "${TARGETS[@]}"
+      
           for f in "${TARGETS[@]}"; do
             echo "Overwriting $f with core tar bytes…"
             cp -f "$CORE" "$f"
           done
-          echo "Done."
+      
+          echo "Post-replacement file details:"
+          ls -l "$CORE"
+          ls -l "${TARGETS[@]}"
 
 
 
