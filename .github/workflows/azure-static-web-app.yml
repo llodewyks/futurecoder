@@ -138,27 +138,34 @@ jobs:
           test -s deploy/course/python_core.tar
 
       # --- Create the exact hashed files your app requests (any path) ---
-      - name: Materialize hashed python_core.load_by_url files
+      - name: Overwrite hashed python_core placeholders with the real tar (file-system based)
         run: |
           set -e
           CORE="deploy/course/python_core.tar"
-          test -s "$CORE"
-          # extract all unique filenames referenced in JS bundles
-          mapfile -t NAMES < <(grep -rhoE "python_core\.tar\.[a-f0-9]{6,}\.load_by_url" deploy/course | sort -u || true)
-          if [ "${#NAMES[@]}" -eq 0 ]; then
-            echo "No hashed names found in bundles."
+          test -s "$CORE"   # must exist and be non-empty
+      
+          echo "Finding placeholder files named python_core.tar*.load_by_url under deploy/course…"
+          # Find in ANY path (root or static/js/static/media); list them deterministically
+          mapfile -t TARGETS < <(find deploy/course -type f -name "python_core.tar*.load_by_url" | sort || true)
+      
+          echo "Found ${#TARGETS[@]} placeholder file(s)."
+          if [ "${#TARGETS[@]}" -eq 0 ]; then
+            echo "No placeholders found. Show likely media dirs for context:"
+            find deploy/course -maxdepth 5 -type d -path "*/static/js*" -print || true
+            # Do NOT fail here; some builds may request only the root variant which will be covered by routes
           else
-            echo "Found ${#NAMES[@]} hashed filenames:"
-            printf '%s\n' "${NAMES[@]}"
-            # place the real tar at BOTH likely locations
-            for name in "${NAMES[@]}"; do
-              for base in "deploy/course" "deploy/course/static/js/static/media"; do
-                mkdir -p "$base"
-                cp -f "$CORE" "$base/$name"
-              done
+            printf '%s\n' "${TARGETS[@]}"
+            for f in "${TARGETS[@]}"; do
+              echo "Overwriting $f with core tar bytes…"
+              cp -f "$CORE" "$f"
             done
+            echo "Validate file types:"
+            sudo apt-get update -y >/dev/null 2>&1 || true
+            sudo apt-get install -y file >/dev/null 2>&1 || true
+            file "$CORE" || true
+            for f in "${TARGETS[@]}"; do file "$f" || true; done
           fi
-          echo "Done."
+
 
       # --- Final checks ---
       - name: Verify deploy artifact essentials
