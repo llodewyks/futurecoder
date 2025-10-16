@@ -1,0 +1,33 @@
+name: Build and Deploy Container to Azure Web App
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build container image
+        run: docker build . -t ghcr.io/${{ github.repository }}:latest
+
+      - name: Push container image
+        run: docker push ghcr.io/${{ github.repository }}:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: PythonCoding
+          images: ghcr.io/${{ github.repository }}:latest
