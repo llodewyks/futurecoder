@@ -130,25 +130,25 @@ jobs:
           {
             "routes": [
              { "route": "/", "redirect": "/course/", "statusCode": 302 },
-            
-                { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_core.tar" },
-            
-                { "route": "/course/static/*",   "serve": "/course/static/*"   },
-                { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
-                { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
-                { "route": "/course/packages/*", "serve": "/course/packages/*" },
-            
-                { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
-                { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
-                { "route": "/course/*.data",     "serve": "/course/*.data"     },
-                { "route": "/course/*.js",       "serve": "/course/*.js"       },
-                { "route": "/course/*.css",      "serve": "/course/*.css"      },
-                { "route": "/course/*.map",      "serve": "/course/*.map"      },
-                { "route": "/course/*.json",     "serve": "/course/*.json"     },
-            
-                { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
-            
-                { "route": "/course/*", "rewrite": "/course/index.html" }
+
+              { "route": "/course/*python_core.tar*", "serve": "/course/python_core.tar" },
+          
+              { "route": "/course/static/*",   "serve": "/course/static/*"   },
+              { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
+              { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
+              { "route": "/course/packages/*", "serve": "/course/packages/*" },
+          
+              { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
+              { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
+              { "route": "/course/*.data",     "serve": "/course/*.data"     },
+              { "route": "/course/*.js",       "serve": "/course/*.js"       },
+              { "route": "/course/*.css",      "serve": "/course/*.css"      },
+              { "route": "/course/*.map",      "serve": "/course/*.map"      },
+              { "route": "/course/*.json",     "serve": "/course/*.json"     },
+          
+              { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
+          
+              { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
           "mimeTypes": {
             ".wasm": "application/wasm",
@@ -185,6 +185,27 @@ jobs:
           # Ensure non-empty
           test -s deploy/course/python_core.tar
 
+      - name: Vendor Pyodide core tar (python_core.tar)
+        run: |
+          set -e
+          OUT="${{ steps.norm.outputs.dir || steps.outdir.outputs.dir || 'dist/course' }}"
+          mkdir -p deploy/course
+      
+          # Read Pyodide version from the built app (no jq needed)
+          VER=$(node -p "require('./${OUT}/pyodide/package.json').version")
+          echo "Pyodide version: $VER"
+      
+          URL_JSDELIVR="https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
+          URL_GH="https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2"
+      
+          echo "Fetching core tar from jsDelivr..."
+          if ! curl -fsSL "$URL_JSDELIVR" -o deploy/course/python_core.tar ; then
+            echo "jsDelivr failed; trying GitHub releases..."
+            curl -fsSL "$URL_GH" -o deploy/course/python_core.tar
+          fi
+      
+          # Must exist and be non-empty
+          test -s deploy/course/python_core.tar
 
 
       # --- Final sanity: files that must exist in the artifact ---
@@ -207,6 +228,24 @@ jobs:
         run: |
           test -f deploy/course/python_stdlib.zip
           test -s deploy/course/python_core.tar
+
+      # 1) Show the exact routing file we’ll upload (to catch ordering/typos)
+      - name: Print staticwebapp.config.json
+        run: |
+          echo "----- staticwebapp.config.json -----"
+          cat -n deploy/staticwebapp.config.json
+      
+      # 2) Prove the file exists and is a bzip2 tar (Pyodide core) and non-empty
+      - name: Assert core & stdlib present and valid
+        run: |
+          ls -l deploy/course/python_stdlib.zip
+          ls -l deploy/course/python_core.tar
+          # core must exist and be non-empty
+          test -s deploy/course/python_core.tar
+          # should identify as bzip2-compressed tar
+          sudo apt-get update -y >/dev/null 2>&1 || true
+          sudo apt-get install -y file >/dev/null 2>&1 || true
+          file deploy/course/python_core.tar || true
 
 
       # --- Upload to SWA (upload only; skip Oryx) ---
