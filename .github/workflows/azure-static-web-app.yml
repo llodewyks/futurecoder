@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Python phase (generate content used by the frontend build) ---
+      # --- Python phase (generate content for frontend) ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -29,14 +29,14 @@ jobs:
           chmod +x scripts/generate.sh || true
           chmod +x scripts/build.sh || true
 
-      - name: Generate site content (translations/static files)
+      - name: Generate site content
         env:
           FUTURECODER_LANGUAGE: en
         run: |
           poetry install --no-root
           ./scripts/generate.sh
 
-      # --- Node phase (install deps + project build script) ---
+      # --- Node phase (install deps + build) ---
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -59,7 +59,7 @@ jobs:
           CI: false
         run: ./scripts/build.sh
 
-      # --- Figure out where the build landed (dist/course or frontend/course) ---
+      # --- Where did the build land? (dist/course or frontend/course) ---
       - name: Detect course output dir
         id: outdir
         run: |
@@ -70,35 +70,25 @@ jobs:
           else
             echo "No course output found"; exit 1
           fi
-          echo "Detected output dir: $(cat $GITHUB_OUTPUT)"
+          echo "Detected: $(cat $GITHUB_OUTPUT)"
 
-      - name: Verify & normalize core archives
+      - name: Verify & normalize archives
         id: norm
         run: |
           OUT="${{ steps.outdir.outputs.dir }}"
           echo "OUT=$OUT"
-          find "$OUT" -maxdepth 2 -type d -print
-
-          ls -la "$OUT/pyodide" || true
-
-          CORE="$(find "$OUT" -type f -name 'python_core*.tar' | head -n1 || true)"
-          STDLIB="$(find "$OUT" -type f -name 'python_stdlib*.zip' | head -n1 || true)"
-          echo "Found CORE=$CORE"
-          echo "Found STDLIB=$STDLIB"
-
-          if [ -n "$STDLIB" ]; then cp -f "$STDLIB" "$OUT/python_stdlib.zip"; fi
-          if [ -n "$CORE" ];  then cp -f "$CORE"  "$OUT/python_core.tar"; fi
-
+          ls -la "$OUT" | sed -n '1,200p'
           test -f "$OUT/index.html"
           test -d "$OUT/pyodide"
+          # normalize stdlib/core names if present
+          STDLIB="$(find "$OUT" -type f -name 'python_stdlib*.zip' | head -n1 || true)"
+          CORE="$(find "$OUT" -type f -name 'python_core*.tar' | head -n1 || true)"
+          [ -n "$STDLIB" ] && cp -f "$STDLIB" "$OUT/python_stdlib.zip" || true
+          [ -n "$CORE" ] && cp -f "$CORE" "$OUT/python_core.tar" || true
           test -f "$OUT/python_stdlib.zip"
-
-          if [ -f "$OUT/python_core.tar" ]; then echo "python_core.tar present"; else echo "python_core.tar not present (ok)"; fi
-
-          ls -la "$OUT" | sed -n '1,200p'
           echo "dir=$OUT" >> "$GITHUB_OUTPUT"
 
-      # --- Stage deploy/ for SWA (keep /course path) ---
+      # --- Stage deploy folder ---
       - name: Stage files for SWA
         run: |
           bash -eo pipefail <<'BASH'
@@ -114,30 +104,11 @@ jobs:
           <meta http-equiv="refresh" content="0; url=/course/">
           HTML
 
-          # Valid JSON only — no comments/trailing commas
+          # Keep routes *minimal* (SPA fallback + correct MIME)
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
-
-              { "route": "/course/python_core.tar*", "serve": "/course/python_core.tar" },
-              { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_core.tar" },
-
-              { "route": "/course/static/*",   "serve": "/course/static/*" },
-              { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*" },
-              { "route": "/course/wheels/*",   "serve": "/course/wheels/*" },
-              { "route": "/course/packages/*", "serve": "/course/packages/*" },
-
-              { "route": "/course/*.whl",  "serve": "/course/*.whl"  },
-              { "route": "/course/*.wasm", "serve": "/course/*.wasm" },
-              { "route": "/course/*.data", "serve": "/course/*.data" },
-              { "route": "/course/*.js",   "serve": "/course/*.js"   },
-              { "route": "/course/*.css",  "serve": "/course/*.css"  },
-              { "route": "/course/*.map",  "serve": "/course/*.map"  },
-              { "route": "/course/*.json", "serve": "/course/*.json" },
-
-              { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
-
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
@@ -150,7 +121,7 @@ jobs:
           JSON
           BASH
 
-      # --- Vendor Pyodide core tar and place it at the exact requested bytes ---
+      # --- Vend Pyodide core tar as deploy/course/python_core.tar ---
       - name: Vendor Pyodide core tar (python_core.tar)
         run: |
           set -e
@@ -158,68 +129,51 @@ jobs:
           mkdir -p deploy/course
           VER=$(node -p "require('./${OUT}/pyodide/package.json').version")
           echo "Pyodide version: $VER"
-
-          URL_JSDELIVR="https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
-          URL_GH="https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2"
-
-          echo "Fetching core tar from jsDelivr..."
-          if ! curl -LfsS --retry 3 --retry-delay 2 -H "User-Agent: GitHubActions" \
-               "$URL_JSDELIVR" -o deploy/course/python_core.tar ; then
-            echo "jsDelivr failed; trying GitHub releases..."
-            curl -LfsS --retry 3 --retry-delay 2 -H "User-Agent: GitHubActions" \
-              "$URL_GH" -o deploy/course/python_core.tar
+          URL1="https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
+          URL2="https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2"
+          echo "Fetching core tar..."
+          if ! curl -LfsS --retry 3 --retry-delay 2 -H "User-Agent: GitHubActions" "$URL1" -o deploy/course/python_core.tar; then
+            curl -LfsS --retry 3 --retry-delay 2 -H "User-Agent: GitHubActions" "$URL2" -o deploy/course/python_core.tar
           fi
           test -s deploy/course/python_core.tar
 
-      - name: Replace hashed python_core.load_by_url files with the real tar (any path)
+      # --- Create the exact hashed files your app requests (any path) ---
+      - name: Materialize hashed python_core.load_by_url files
         run: |
           set -e
           CORE="deploy/course/python_core.tar"
           test -s "$CORE"
-
-          echo "Searching for ANY placeholders named python_core.tar*.load_by_url under deploy/course…"
-          mapfile -t TARGETS < <(find deploy/course -type f -name "python_core.tar*.load_by_url" | sort || true)
-
-          if [ "${#TARGETS[@]}" -eq 0 ]; then
-            echo "No placeholders found. Showing candidate media dirs:"
-            find deploy/course -maxdepth 4 -type d -path "*/static/js*" -print || true
-            exit 0
+          # extract all unique filenames referenced in JS bundles
+          mapfile -t NAMES < <(grep -rhoE "python_core\.tar\.[a-f0-9]{6,}\.load_by_url" deploy/course | sort -u || true)
+          if [ "${#NAMES[@]}" -eq 0 ]; then
+            echo "No hashed names found in bundles."
+          else
+            echo "Found ${#NAMES[@]} hashed filenames:"
+            printf '%s\n' "${NAMES[@]}"
+            # place the real tar at BOTH likely locations
+            for name in "${NAMES[@]}"; do
+              for base in "deploy/course" "deploy/course/static/js/static/media"; do
+                mkdir -p "$base"
+                cp -f "$CORE" "$base/$name"
+              done
+            done
           fi
+          echo "Done."
 
-          echo "Found ${#TARGETS[@]} target(s):"
-          printf '%s\n' "${TARGETS[@]}"
-
-          for f in "${TARGETS[@]}"; do
-            echo "Overwriting $f with core tar bytes…"
-            cp -f "$CORE" "$f"
-          done
-
-          echo "Post-replacement file details:"
-          ls -l "$CORE"
-          ls -l "${TARGETS[@]}"
-
-      # --- Final sanity: files that must exist in the artifact ---
+      # --- Final checks ---
       - name: Verify deploy artifact essentials
         run: |
-          test -f deploy/course/index.html
+          test -s deploy/course/index.html
           test -d deploy/course/pyodide
           test -s deploy/course/python_stdlib.zip
           test -s deploy/course/python_core.tar
+          echo "Listing any materialized hashed files:"
+          find deploy/course -type f -name "python_core.tar*.load_by_url" -maxdepth 4 -exec ls -l {} \;
 
       - name: Print staticwebapp.config.json
-        run: |
-          echo "----- staticwebapp.config.json -----"
-          cat -n deploy/staticwebapp.config.json
+        run: cat -n deploy/staticwebapp.config.json
 
-      - name: Assert core & stdlib present and valid
-        run: |
-          ls -l deploy/course/python_stdlib.zip
-          ls -l deploy/course/python_core.tar
-          sudo apt-get update -y >/dev/null 2>&1 || true
-          sudo apt-get install -y file >/dev/null 2>&1 || true
-          file deploy/course/python_core.tar || true
-
-      # --- Upload to SWA (upload only; skip Oryx) ---
+      # --- Deploy to SWA (no Oryx build) ---
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
         with:
