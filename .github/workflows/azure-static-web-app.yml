@@ -103,7 +103,7 @@ jobs:
           <meta http-equiv="refresh" content="0; url=/course/">
           HTML
 
-      # --- Write & validate staticwebapp.config.json (valid JSON, one-wildcard routes first) ---
+      # --- Write & validate staticwebapp.config.json (minimal & valid) ---
       - name: Write & validate staticwebapp.config.json
         run: |
           set -e
@@ -112,19 +112,12 @@ jobs:
           const cfg = {
             routes: [
               { route: "/", redirect: "/course/", statusCode: 302 },
-
-              // Serve the real core tar for any hashed request at root or CRA media path
-              { route: "/course/python_core.tar*", serve: "/course/python_core.tar" },
-              { route: "/course/static/js/static/media/python_core.tar*", serve: "/course/python_core.tar" },
-
-              // Let index.html handle SPA routes; static assets are direct
               { route: "/course/*", rewrite: "/course/index.html" }
             ],
             mimeTypes: {
               ".wasm": "application/wasm",
               ".whl":  "application/octet-stream",
-              ".data": "application/octet-stream",
-              ".load_by_url": "application/octet-stream"
+              ".data": "application/octet-stream"
             }
           };
           const p = "deploy/staticwebapp.config.json";
@@ -178,30 +171,27 @@ jobs:
 
           test -s deploy/course/python_core.tar
 
-      # --- Overwrite any hashed placeholders with the real tar (covers any path) ---
-      - name: Overwrite hashed python_core placeholders with the real tar (file-system based)
+      # --- Patch built JS to request canonical filenames (no hashed load_by_url) ---
+      - name: Patch bundles to request canonical core/stdlib paths
         run: |
           set -e
-          CORE="deploy/course/python_core.tar"
-          test -s "$CORE"
+          echo "Before patch (any references to load_by_url):"
+          grep -Rnoh --include="*.js" -E "python_(core|stdlib)\.(tar|zip)\.[a-f0-9]{6,}\.load_by_url" deploy/course || true
 
-          echo "Finding placeholder files named python_core.tar*.load_by_url under deploy/course…"
-          mapfile -t TARGETS < <(find deploy/course -maxdepth 5 -type f -name "python_core.tar*.load_by_url" | sort || true)
-          echo "Found ${#TARGETS[@]} placeholder(s)."
+          # Replace any hashed ...load_by_url tokens with canonical filenames
+          find deploy/course -maxdepth 4 -type f -name "*.js" -print0 \
+            | xargs -0 -r sed -i -E \
+              -e 's#python_core\.tar\.[a-f0-9]{6,}\.load_by_url#python_core.tar#g' \
+              -e 's#python_stdlib\.zip\.[a-f0-9]{6,}\.load_by_url#python_stdlib.zip#g' \
+              -e 's#static/js/static/media/python_core\.tar[^"'"'"' ]*#python_core.tar#g' \
+              -e 's#static/js/static/media/python_stdlib\.zip[^"'"'"' ]*#python_stdlib.zip#g'
 
-          if [ "${#TARGETS[@]}" -gt 0 ]; then
-            printf '%s\n' "${TARGETS[@]}"
-            for f in "${TARGETS[@]}"; do
-              echo "Overwriting $f with core tar bytes…"
-              cp -f "$CORE" "$f"
-            done
-            sudo apt-get update -y >/dev/null 2>&1 || true
-            sudo apt-get install -y file >/dev/null 2>&1 || true
-            file "$CORE" || true
-            for f in "${TARGETS[@]}"; do file "$f" || true; done
-          else
-            echo "No placeholders found (routes will serve /course/python_core.tar)."
-          fi
+          echo "After patch (should be empty):"
+          grep -Rnoh --include="*.js" -E "python_(core|stdlib)\.(tar|zip)\.[a-f0-9]{6,}\.load_by_url" deploy/course || true
+
+          # prove the canonical files exist
+          test -s deploy/course/python_core.tar
+          test -s deploy/course/python_stdlib.zip
 
       # --- Final checks ---
       - name: Verify deploy artifact essentials
@@ -210,8 +200,6 @@ jobs:
           test -d deploy/course/pyodide
           test -s deploy/course/python_stdlib.zip
           test -s deploy/course/python_core.tar
-          echo "Listing any materialized hashed files:"
-          find deploy/course -maxdepth 5 -type f -name "python_core.tar*.load_by_url" -exec ls -l {} \;
 
       - name: Print staticwebapp.config.json
         run: cat -n deploy/staticwebapp.config.json
