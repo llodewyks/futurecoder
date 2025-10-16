@@ -122,19 +122,50 @@ jobs:
           BASH
 
       # --- Vend Pyodide core tar as deploy/course/python_core.tar ---
-      - name: Vendor Pyodide core tar (python_core.tar)
+      - name: Vendor Pyodide core tar (python_core.tar) with validation
         run: |
           set -e
           OUT="${{ steps.norm.outputs.dir || steps.outdir.outputs.dir || 'dist/course' }}"
           mkdir -p deploy/course
+      
           VER=$(node -p "require('./${OUT}/pyodide/package.json').version")
           echo "Pyodide version: $VER"
-          URL1="https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
-          URL2="https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2"
-          echo "Fetching core tar..."
-          if ! curl -LfsS --retry 3 --retry-delay 2 -H "User-Agent: GitHubActions" "$URL1" -o deploy/course/python_core.tar; then
-            curl -LfsS --retry 3 --retry-delay 2 -H "User-Agent: GitHubActions" "$URL2" -o deploy/course/python_core.tar
+      
+          CANDIDATES=(
+            "https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
+            "https://repo.pyodide.org/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
+            "https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2?download=1"
+          )
+      
+          OK=""
+          for URL in "${CANDIDATES[@]}"; do
+            echo "Trying $URL"
+            if curl -LfsS --retry 3 --retry-delay 2 \
+                 -H "User-Agent: GitHubActions" \
+                 -H "Accept: application/octet-stream" \
+                 "$URL" -o deploy/course/python_core.tar; then
+              # validate magic: bzip2 starts with BZh
+              MAGIC=$(head -c 3 deploy/course/python_core.tar || true)
+              if [ "$MAGIC" = $'BZh' ]; then
+                echo "Fetched a VALID bzip2 tar from: $URL"
+                OK="yes"
+                break
+              else
+                echo "Downloaded bytes are NOT a bzip2 tar (magic='$MAGIC'). Trying next source…"
+              fi
+            else
+              echo "Download failed from: $URL"
+            fi
+          done
+      
+          if [ -z "$OK" ]; then
+            echo "ERROR: Could not fetch a valid pyodide core tar (bzip2)."
+            echo "First bytes of the last attempt:"
+            head -c 200 deploy/course/python_core.tar | sed -e 's/[^[:print:]\t]/./g' || true
+            exit 1
           fi
+      
+          # Extra sanity
           test -s deploy/course/python_core.tar
 
       # --- Create the exact hashed files your app requests (any path) ---
@@ -142,29 +173,27 @@ jobs:
         run: |
           set -e
           CORE="deploy/course/python_core.tar"
-          test -s "$CORE"   # must exist and be non-empty
+          test -s "$CORE"
       
           echo "Finding placeholder files named python_core.tar*.load_by_url under deploy/course…"
-          # Find in ANY path (root or static/js/static/media); list them deterministically
           mapfile -t TARGETS < <(find deploy/course -type f -name "python_core.tar*.load_by_url" | sort || true)
+          echo "Found ${#TARGETS[@]} placeholder(s)."
       
-          echo "Found ${#TARGETS[@]} placeholder file(s)."
-          if [ "${#TARGETS[@]}" -eq 0 ]; then
-            echo "No placeholders found. Show likely media dirs for context:"
-            find deploy/course -maxdepth 5 -type d -path "*/static/js*" -print || true
-            # Do NOT fail here; some builds may request only the root variant which will be covered by routes
-          else
+          if [ "${#TARGETS[@]}" -gt 0 ]; then
             printf '%s\n' "${TARGETS[@]}"
             for f in "${TARGETS[@]}"; do
               echo "Overwriting $f with core tar bytes…"
               cp -f "$CORE" "$f"
             done
-            echo "Validate file types:"
+            # prove they look like bzip2 too
             sudo apt-get update -y >/dev/null 2>&1 || true
             sudo apt-get install -y file >/dev/null 2>&1 || true
             file "$CORE" || true
             for f in "${TARGETS[@]}"; do file "$f" || true; done
+          else
+            echo "No placeholders found (that’s fine if routes serve from /course/python_core.tar)."
           fi
+
 
 
       # --- Final checks ---
