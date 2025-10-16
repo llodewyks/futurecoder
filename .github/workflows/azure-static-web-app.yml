@@ -107,9 +107,25 @@ jobs:
           # Keep routes *minimal* (SPA fallback + correct MIME)
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
-            "routes": [
-              { "route": "/", "redirect": "/course/", "statusCode": 302 },
-              { "route": "/course/*", "rewrite": "/course/index.html" }
+            { "route": "/", "redirect": "/course/", "statusCode": 302 },
+
+            { "route": "/course/python_core.tar*", "serve": "/course/python_core.tar" },
+            { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_core.tar" },
+        
+            { "route": "/course/static/*",   "serve": "/course/static/*" },
+            { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*" },
+            { "route": "/course/wheels/*",   "serve": "/course/wheels/*" },
+            { "route": "/course/packages/*", "serve": "/course/packages/*" },
+        
+            { "route": "/course/*.whl",  "serve": "/course/*.whl"  },
+            { "route": "/course/*.wasm", "serve": "/course/*.wasm" },
+            { "route": "/course/*.data", "serve": "/course/*.data" },
+            { "route": "/course/*.js",   "serve": "/course/*.js"   },
+            { "route": "/course/*.css",  "serve": "/course/*.css"  },
+            { "route": "/course/*.map",  "serve": "/course/*.map"  },
+            { "route": "/course/*.json", "serve": "/course/*.json" },
+        
+            { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
             "mimeTypes": {
               ".wasm": "application/wasm",
