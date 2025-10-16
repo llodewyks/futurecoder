@@ -164,48 +164,37 @@ jobs:
       - name: Vendor Pyodide core tar (python_core.tar)
         run: |
           set -e
-          # Read version from the built files
-          OUT="${{ steps.norm.outputs.dir || steps.outdir.outputs.dir || 'dist/course' }}"
-          VER="$(jq -r .version "$OUT/pyodide/package.json" 2>/dev/null || node -p 'require("./'"$OUT"'/pyodide/package.json").version')"
-          echo "Pyodide version: $VER"
-      
-          mkdir -p deploy/course
-          # Try jsDelivr first, then GitHub releases as fallback
-          URL_JSDELIVR="https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
-          URL_GH="https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2"
-      
-          echo "Fetching core from $URL_JSDELIVR ..."
-          if ! curl -fsSL "$URL_JSDELIVR" -o deploy/course/python_core.tar ; then
-            echo "jsDelivr failed; trying GitHub release $URL_GH ..."
-            curl -fsSL "$URL_GH" -o deploy/course/python_core.tar
-          fi
-      
-          # Sanity: it should be a bzip2 tar (magic check)
-          file deploy/course/python_core.tar || true
-          # Ensure non-empty
-          test -s deploy/course/python_core.tar
-
-      - name: Vendor Pyodide core tar (python_core.tar)
-        run: |
-          set -e
           OUT="${{ steps.norm.outputs.dir || steps.outdir.outputs.dir || 'dist/course' }}"
           mkdir -p deploy/course
-      
-          # Read Pyodide version from the built app (no jq needed)
           VER=$(node -p "require('./${OUT}/pyodide/package.json').version")
           echo "Pyodide version: $VER"
-      
           URL_JSDELIVR="https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
           URL_GH="https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2"
-      
           echo "Fetching core tar from jsDelivr..."
           if ! curl -fsSL "$URL_JSDELIVR" -o deploy/course/python_core.tar ; then
             echo "jsDelivr failed; trying GitHub releases..."
             curl -fsSL "$URL_GH" -o deploy/course/python_core.tar
           fi
-      
-          # Must exist and be non-empty
           test -s deploy/course/python_core.tar
+      
+      - name: Replace hashed python_core.load_by_url files with the real tar
+        run: |
+          set -e
+          CORE="deploy/course/python_core.tar"
+          test -s "$CORE"
+          echo "Looking for hashed placeholders under /static/js/static/media/…"
+          mapfile -t TARGETS < <(find deploy/course -type f -path "*/static/js/static/media/python_core.tar*.load_by_url" | sort || true)
+          if [ "${#TARGETS[@]}" -eq 0 ]; then
+            echo "No hashed python_core.tar*.load_by_url files found."; exit 0
+          fi
+          printf 'Found %s target(s):\n' "${#TARGETS[@]}"
+          printf '%s\n' "${TARGETS[@]}"
+          for f in "${TARGETS[@]}"; do
+            echo "Overwriting $f with core tar bytes…"
+            cp -f "$CORE" "$f"
+          done
+          echo "Done."
+
 
 
       # --- Final sanity: files that must exist in the artifact ---
