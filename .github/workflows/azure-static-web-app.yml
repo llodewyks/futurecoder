@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Python phase (dependencies + content generation) ---
+      # --- Python phase (generate content used by the frontend build) ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -46,7 +46,6 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # Keep CRA assets on relative URLs in case the app isn't forcing /course
       - name: Override CRA homepage to relative URLs
         working-directory: frontend
         run: |
@@ -58,8 +57,7 @@ jobs:
           REACT_APP_USE_FIREBASE_EMULATORS: '1'
           REACT_APP_FIREBASE_STAGING: '1'
           CI: false
-        run: |
-          ./scripts/build.sh
+        run: ./scripts/build.sh
 
       # --- Figure out where the build landed (dist/course or frontend/course) ---
       - name: Detect course output dir
@@ -79,34 +77,25 @@ jobs:
         run: |
           OUT="${{ steps.outdir.outputs.dir }}"
           echo "OUT=$OUT"
-
-          echo "Tree (2 levels):"
           find "$OUT" -maxdepth 2 -type d -print
 
-          echo "Listing $OUT/pyodide:"
           ls -la "$OUT/pyodide" || true
 
-          # Find stdlib and (optional) core
           CORE="$(find "$OUT" -type f -name 'python_core*.tar' | head -n1 || true)"
           STDLIB="$(find "$OUT" -type f -name 'python_stdlib*.zip' | head -n1 || true)"
           echo "Found CORE=$CORE"
           echo "Found STDLIB=$STDLIB"
 
-          # Normalize: always copy stdlib to course root; core only if present
           if [ -n "$STDLIB" ]; then cp -f "$STDLIB" "$OUT/python_stdlib.zip"; fi
           if [ -n "$CORE" ];  then cp -f "$CORE"  "$OUT/python_core.tar"; fi
 
-          # Must-haves
           test -f "$OUT/index.html"
           test -d "$OUT/pyodide"
-          test -f "$OUT/python_stdlib.zip"   # required
+          test -f "$OUT/python_stdlib.zip"
 
-          # Optional: core tar (don’t fail if absent)
           if [ -f "$OUT/python_core.tar" ]; then echo "python_core.tar present"; else echo "python_core.tar not present (ok)"; fi
 
-          echo "Course root after normalization:"
           ls -la "$OUT" | sed -n '1,200p'
-
           echo "dir=$OUT" >> "$GITHUB_OUTPUT"
 
       # --- Stage deploy/ for SWA (keep /course path) ---
@@ -118,50 +107,50 @@ jobs:
           rm -rf deploy
           mkdir -p deploy/course
           cp -R "$OUT"/* deploy/course/
-      
+
           # Root -> /course/
           cat > deploy/index.html <<'HTML'
           <!DOCTYPE html>
           <meta http-equiv="refresh" content="0; url=/course/">
           HTML
-      
+
           # Valid JSON only — no comments/trailing commas
           cat > deploy/staticwebapp.config.json <<'JSON'
           {
             "routes": [
               { "route": "/", "redirect": "/course/", "statusCode": 302 },
-               { "route": "/course/python_core.tar*", "serve": "/course/python_core.tar" },
-          
+
+              { "route": "/course/python_core.tar*", "serve": "/course/python_core.tar" },
               { "route": "/course/static/js/static/media/python_core.tar*", "serve": "/course/python_core.tar" },
-          
-              { "route": "/course/static/*",   "serve": "/course/static/*"   },
-              { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*"  },
-              { "route": "/course/wheels/*",   "serve": "/course/wheels/*"   },
+
+              { "route": "/course/static/*",   "serve": "/course/static/*" },
+              { "route": "/course/pyodide/*",  "serve": "/course/pyodide/*" },
+              { "route": "/course/wheels/*",   "serve": "/course/wheels/*" },
               { "route": "/course/packages/*", "serve": "/course/packages/*" },
-          
-              { "route": "/course/*.whl",      "serve": "/course/*.whl"      },
-              { "route": "/course/*.wasm",     "serve": "/course/*.wasm"     },
-              { "route": "/course/*.data",     "serve": "/course/*.data"     },
-              { "route": "/course/*.js",       "serve": "/course/*.js"       },
-              { "route": "/course/*.css",      "serve": "/course/*.css"      },
-              { "route": "/course/*.map",      "serve": "/course/*.map"      },
-              { "route": "/course/*.json",     "serve": "/course/*.json"     },
-          
+
+              { "route": "/course/*.whl",  "serve": "/course/*.whl"  },
+              { "route": "/course/*.wasm", "serve": "/course/*.wasm" },
+              { "route": "/course/*.data", "serve": "/course/*.data" },
+              { "route": "/course/*.js",   "serve": "/course/*.js"   },
+              { "route": "/course/*.css",  "serve": "/course/*.css"  },
+              { "route": "/course/*.map",  "serve": "/course/*.map"  },
+              { "route": "/course/*.json", "serve": "/course/*.json" },
+
               { "route": "/course/python_stdlib.zip*", "serve": "/course/python_stdlib.zip" },
-          
+
               { "route": "/course/*", "rewrite": "/course/index.html" }
             ],
-          "mimeTypes": {
-            ".wasm": "application/wasm",
-            ".whl":  "application/octet-stream",
-            ".data": "application/octet-stream",
-            ".load_by_url": "application/octet-stream"
-                      }
+            "mimeTypes": {
+              ".wasm": "application/wasm",
+              ".whl":  "application/octet-stream",
+              ".data": "application/octet-stream",
+              ".load_by_url": "application/octet-stream"
+            }
           }
           JSON
-      
           BASH
 
+      # --- Vendor Pyodide core tar and place it at the exact requested bytes ---
       - name: Vendor Pyodide core tar (python_core.tar)
         run: |
           set -e
@@ -169,83 +158,66 @@ jobs:
           mkdir -p deploy/course
           VER=$(node -p "require('./${OUT}/pyodide/package.json').version")
           echo "Pyodide version: $VER"
+
           URL_JSDELIVR="https://cdn.jsdelivr.net/pyodide/v${VER}/full/pyodide-core-${VER}.tar.bz2"
           URL_GH="https://github.com/pyodide/pyodide/releases/download/${VER}/pyodide-core-${VER}.tar.bz2"
+
           echo "Fetching core tar from jsDelivr..."
-          if ! curl -fsSL "$URL_JSDELIVR" -o deploy/course/python_core.tar ; then
+          if ! curl -LfsS --retry 3 --retry-delay 2 -H "User-Agent: GitHubActions" \
+               "$URL_JSDELIVR" -o deploy/course/python_core.tar ; then
             echo "jsDelivr failed; trying GitHub releases..."
-            curl -fsSL "$URL_GH" -o deploy/course/python_core.tar
+            curl -LfsS --retry 3 --retry-delay 2 -H "User-Agent: GitHubActions" \
+              "$URL_GH" -o deploy/course/python_core.tar
           fi
           test -s deploy/course/python_core.tar
-      
-           - name: Replace hashed python_core.load_by_url files with the real tar (any path)
-            run: |
+
+      - name: Replace hashed python_core.load_by_url files with the real tar (any path)
+        run: |
           set -e
           CORE="deploy/course/python_core.tar"
-          test -s "$CORE"  # must exist and be non-empty
-      
+          test -s "$CORE"
+
           echo "Searching for ANY placeholders named python_core.tar*.load_by_url under deploy/course…"
           mapfile -t TARGETS < <(find deploy/course -type f -name "python_core.tar*.load_by_url" | sort || true)
-      
+
           if [ "${#TARGETS[@]}" -eq 0 ]; then
-            echo "No placeholders found. Showing a few candidate paths for context:"
+            echo "No placeholders found. Showing candidate media dirs:"
             find deploy/course -maxdepth 4 -type d -path "*/static/js*" -print || true
             exit 0
           fi
-      
+
           echo "Found ${#TARGETS[@]} target(s):"
           printf '%s\n' "${TARGETS[@]}"
-      
+
           for f in "${TARGETS[@]}"; do
             echo "Overwriting $f with core tar bytes…"
             cp -f "$CORE" "$f"
           done
-      
+
           echo "Post-replacement file details:"
           ls -l "$CORE"
           ls -l "${TARGETS[@]}"
-
-
 
       # --- Final sanity: files that must exist in the artifact ---
       - name: Verify deploy artifact essentials
         run: |
           test -f deploy/course/index.html
           test -d deploy/course/pyodide
-          test -f deploy/course/python_stdlib.zip    # required by runtime
-          # python_core.tar is optional in recent Pyodide builds
-          if [ -f deploy/course/python_core.tar ]; then
-            echo "python_core.tar present (optional)";
-          else
-            echo "python_core.tar not present (ok)";
-          fi
-
-      - name: Assert stdlib present
-        run: test -f deploy/course/python_stdlib.zip
-
-      - name: Assert core & stdlib present
-        run: |
-          test -f deploy/course/python_stdlib.zip
+          test -s deploy/course/python_stdlib.zip
           test -s deploy/course/python_core.tar
 
-      # 1) Show the exact routing file we’ll upload (to catch ordering/typos)
       - name: Print staticwebapp.config.json
         run: |
           echo "----- staticwebapp.config.json -----"
           cat -n deploy/staticwebapp.config.json
-      
-      # 2) Prove the file exists and is a bzip2 tar (Pyodide core) and non-empty
+
       - name: Assert core & stdlib present and valid
         run: |
           ls -l deploy/course/python_stdlib.zip
           ls -l deploy/course/python_core.tar
-          # core must exist and be non-empty
-          test -s deploy/course/python_core.tar
-          # should identify as bzip2-compressed tar
           sudo apt-get update -y >/dev/null 2>&1 || true
           sudo apt-get install -y file >/dev/null 2>&1 || true
           file deploy/course/python_core.tar || true
-
 
       # --- Upload to SWA (upload only; skip Oryx) ---
       - name: Deploy
