@@ -50,12 +50,34 @@ RUN set -eux; \
 
 # After build, the static site should be in dist/course
 # Validate the build output early (this will fail the build if something’s missing)
+# ---------- normalize & validate build output ----------
 RUN set -eux; \
+    # Base structure must exist
     test -d dist/course; \
     test -f dist/course/index.html; \
     test -d dist/course/pyodide; \
-    # stdlib is required by pyodide loader
-    test -f dist/course/python_stdlib.zip || (echo "python_stdlib.zip missing" && false)
+    \
+    # Normalize python_stdlib.zip (required by runtime)
+    if [ -f dist/course/python_stdlib.zip ]; then \
+      echo "Found stdlib at dist/course/python_stdlib.zip"; \
+    elif [ -f dist/course/pyodide/python_stdlib.zip ]; then \
+      echo "Found stdlib under pyodide/, normalizing to course root..."; \
+      cp -f dist/course/pyodide/python_stdlib.zip dist/course/python_stdlib.zip; \
+    else \
+      echo "python_stdlib.zip missing (looked in course/ and course/pyodide/)"; \
+      exit 1; \
+    fi; \
+    \
+    # Optional: normalize python_core tar if the build produced one
+    CORE_FILE="$(find dist/course -maxdepth 2 -type f -name 'python_core*.tar' | head -n1 || true)"; \
+    if [ -n "$CORE_FILE" ] && [ ! -f dist/course/python_core.tar ]; then \
+      echo "Normalizing $CORE_FILE -> dist/course/python_core.tar"; \
+      cp -f "$CORE_FILE" dist/course/python_core.tar || true; \
+    fi; \
+    \
+    # Final assertions
+    test -f dist/course/python_stdlib.zip
+
 
 # ---------- runtime stage ----------
 FROM nginx:alpine AS runtime
