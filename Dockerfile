@@ -88,6 +88,9 @@ EXPOSE 80
 # Copy the built site under /usr/share/nginx/html
 COPY --from=build /app/dist/course /usr/share/nginx/html/course
 
+# Copy robots.txt from project root into the nginx root
+COPY robots.txt /usr/share/nginx/html/robots.txt
+
 # Optional: redirect root to /course/
 RUN printf '<!doctype html><meta http-equiv="refresh" content="0; url=/course/">' \
     > /usr/share/nginx/html/index.html
