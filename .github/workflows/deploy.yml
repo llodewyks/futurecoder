@@ -68,7 +68,10 @@ jobs:
           az webapp config appsettings set \
             --name "${{ env.APP_NAME }}" \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --settings WEBSITES_PORT=${{ env.WEBSITES_PORT }}
+            --settings WEBSITES_PORT=${{ env.WEBSITES_PORT }} \
+                       REACT_APP_PROGRESS_API_BASE=${{ secrets.REACT_APP_PROGRESS_API_BASE }} \
+                       REACT_APP_PROGRESS_API_KEY=${{ secrets.REACT_APP_PROGRESS_API_KEY }} \
+                       REACT_APP_ADMIN_EMAILS=${{ secrets.REACT_APP_ADMIN_EMAILS }}
 
       # Derive a flag from secret (don't reference secrets in `if:` directly)
       - name: Determine if GHCR is private
