@@ -54,9 +54,38 @@ import {interrupt, runCode, terminalRef} from "./RunCode";
 import firebase from "firebase/app";
 import {TableOfContents} from "./TableOfContents";
 import HeaderLoginInfo from "./components/HeaderLoginInfo";
+import AdminDashboard from "./components/AdminDashboard";
 import terms from "./terms.json"
 import _ from "lodash";
 import {otherVisibleLanguages} from "./languages";
+
+const rawAdminEmailRules = (process.env.REACT_APP_ADMIN_EMAILS || "")
+  .split(",")
+  .map(rule => rule.trim().toLowerCase())
+  .filter(Boolean);
+
+const matchesAdminEmail = (email) => {
+  if (!email) {
+    return false;
+  }
+  const normalised = email.toLowerCase();
+  return rawAdminEmailRules.some(rule => {
+    if (rule.startsWith("@")) {
+      return normalised.endsWith(rule);
+    }
+    return normalised === rule;
+  });
+};
+
+const isAdminUser = (user) => {
+  if (!user) {
+    return false;
+  }
+  if (user.developerMode) {
+    return true;
+  }
+  return matchesAdminEmail(user.email || "");
+};
 
 
 const EditorButtons = (
@@ -427,12 +456,34 @@ const CourseText = (
 
 class AppComponent extends React.Component {
   render() {
-    if (this.props.route === "toc") {
+    const {route, user, pages} = this.props;
+    const admin = isAdminUser(user);
+    if (route === "toc") {
       return <TableOfContents/>
     }
 
+    if (route === "admin") {
+      return <div className="book-container">
+        <NavBar user={user} isAdmin={admin}/>
+        <ErrorBoundary canGiveFeedback>
+          {admin
+            ? <AdminDashboard pages={pages} pagesProgress={user?.pagesProgress} user={user} isAdmin={admin}/>
+            : (
+              <div className="admin-dashboard markdown-body p-4">
+                <h1>Admin access required</h1>
+                <p>
+                  You need to be marked as an admin to view this dashboard.
+                  Add your email address to <code>REACT_APP_ADMIN_EMAILS</code> or enable developer mode in settings.
+                </p>
+              </div>
+            )
+          }
+        </ErrorBoundary>
+      </div>
+    }
+
     return <div className="book-container">
-      <NavBar user={this.props.user}/>
+      <NavBar user={user} isAdmin={admin}/>
       <ErrorBoundary canGiveFeedback>
         <AppMain {...this.props}/>
       </ErrorBoundary>
@@ -440,14 +491,18 @@ class AppComponent extends React.Component {
   }
 }
 
-function NavBar({user}) {
+function NavBar({user, isAdmin}) {
   return <nav className="navbar navbar-expand-lg navbar-light bg-light">
         <span className="nav-item custom-popup">
-          <MenuPopup user={user}/>
+          <MenuPopup user={user} isAdmin={isAdmin}/>
         </span>
     <span className="nav-item navbar-text">
           <HeaderLoginInfo email={user.email}/>
         </span>
+    {isAdmin &&
+    <a className="nav-item nav-link" href="#admin">
+      <FontAwesomeIcon icon={faListCheck}/> Admin dashboard
+    </a>}
     <a className="nav-item nav-link" href="#toc">
       <FontAwesomeIcon icon={faListOl}/> {terms.table_of_contents}
     </a>
@@ -570,7 +625,7 @@ const StepButtons = () =>
   </div>
 
 
-const MenuPopup = ({user}) =>
+const MenuPopup = ({user, isAdmin}) =>
     <Popup
       nested
       trigger={
@@ -606,6 +661,17 @@ const MenuPopup = ({user}) =>
             <SettingsModal user={user}/>
           </Popup>
         </p>
+        {isAdmin &&
+          <p>
+            <a
+              className="btn btn-secondary"
+              href="#admin"
+              onClick={() => close()}
+            >
+              <FontAwesomeIcon icon={faListCheck}/> Admin dashboard
+            </a>
+          </p>
+        }
         <FeedbackMenuButton/>
         {
           otherVisibleLanguages.map(lang =>

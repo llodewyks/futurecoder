@@ -13,6 +13,7 @@ import {wrapAsync} from "../frontendlib/sentry";
 import pRetry from 'p-retry';
 import localforage from "localforage";
 import {languageConfig} from "../languages";
+import {fetchUserProgress, patchUserProgress, progressApiAvailable} from "../services/progressApi";
 
 export const disableFirebase = !!process.env.REACT_APP_DISABLE_FIREBASE;
 export const disableLogin = disableFirebase || !!process.env.REACT_APP_DISABLE_LOGIN;
@@ -75,6 +76,7 @@ const initialState = {
     pagesProgress: {
       loading_placeholder: {
         step_name: "loading_placeholder",
+        updated_at: null,
       }
     },
     pageSlug: "loading_placeholder",
@@ -150,7 +152,7 @@ const afterSetPage = (pageSlug, state = localState) => {
   window.location.hash = pageSlug;
 }
 
-export const specialHash = (hash) => ["toc", "ide", "question"].includes(hash);
+export const specialHash = (hash) => ["toc", "ide", "question", "admin"].includes(hash);
 
 export const navigate = () => {
   const hash = window.location.hash.substring(1);
@@ -182,7 +184,9 @@ export const moveStep = (delta) => {
   if (delta > 0) {
     animateStep(stepIndex);
   }
-  setUserStateAndDatabase(["pagesProgress", localState.user.pageSlug, "step_name"], step.name);
+  const progressPath = ["pagesProgress", localState.user.pageSlug];
+  setUserStateAndDatabase([...progressPath, "step_name"], step.name);
+  setUserStateAndDatabase([...progressPath, "updated_at"], new Date().toISOString());
   setState("assistant", initialState.assistant);
 };
 
@@ -259,13 +263,25 @@ if (!disableFirebase) {
 }
 
 export const updateUserData = async (user) => {
-  Sentry.setUser({id: user.uid});
-  const userData = await databaseRequest("GET");
+  const identifier = user.uid || user.email;
+  if (identifier) {
+    Sentry.setUser({id: identifier});
+  }
+  let userData = {};
+  if (progressApiAvailable) {
+    try {
+      userData = await fetchUserProgress(identifier) || {};
+    } catch (error) {
+      console.error("Failed to load user progress from Azure API", error);
+    }
+  } else {
+    userData = await databaseRequest("GET");
+  }
   // loadUser should be called on the local store data first
   // for proper merging with the firebase user data in loadUserAndPages
   await loadUserFromLocalStorePromise;
   loadUser({
-    uid: user.uid,
+    uid: user.uid || identifier,
     email: user.email,
     ...userData,
   });
@@ -280,7 +296,7 @@ const loadUserFromLocalStorePromise = localStore.getItem("user").then(user => {
 });
 
 export const databaseRequest = wrapAsync(async function databaseRequest(method, data={}, endpoint="users") {
-  if (disableFirebase) {
+  if (progressApiAvailable || disableFirebase) {
     return;
   }
   const currentUser = firebase.auth().currentUser;
@@ -301,6 +317,15 @@ export const databaseRequest = wrapAsync(async function databaseRequest(method, 
 });
 
 export const updateDatabase = (updates) => {
+  if (progressApiAvailable) {
+    const userId = localState.user?.uid || localState.user?.email;
+    if (!userId) {
+      return Promise.resolve();
+    }
+    return patchUserProgress(userId, updates).catch(error => {
+      console.error("Failed to update progress via Azure API", error, updates);
+    });
+  }
   return databaseRequest("PATCH", updates);
 }
 
@@ -343,8 +368,10 @@ const loadUserAndPages = (state, previousUser = {}) => {
 
   pagesProgress = {...(pagesProgress || {})};
   pageSlugsList.forEach(slug => {
-    const steps = pages[slug].steps;
-    let step_name = pagesProgress[slug]?.step_name || steps[0].name;
+    const steps = pages[slug].steps || [];
+    const currentProgress = pagesProgress[slug] || {};
+    let step_name = currentProgress.step_name || steps[0]?.name || "";
+    let updated_at = currentProgress.updated_at ?? null;
     const progress = previousUser.pagesProgress?.[slug];
     if (progress) {
       const findStepIndex = (name) => _.find(steps, {name})?.index || 0
@@ -353,9 +380,15 @@ const loadUserAndPages = (state, previousUser = {}) => {
       if (previousIndex > currentIndex) {
         step_name = progress.step_name;
         updates[`pagesProgress/${slug}/step_name`] = step_name;
+        if (progress.updated_at) {
+          updates[`pagesProgress/${slug}/updated_at`] = progress.updated_at;
+          updated_at = progress.updated_at;
+        }
+      } else if (!updated_at && progress.updated_at) {
+        updated_at = progress.updated_at;
       }
     }
-    pagesProgress[slug] = {step_name};
+    pagesProgress[slug] = {...currentProgress, step_name, updated_at};
   });
 
   migrateUserState(pages, pagesProgress, updates);
@@ -375,12 +408,18 @@ const loadUserAndPages = (state, previousUser = {}) => {
 function migrateUserState(pages, pagesProgress, updates) {
   const oldSlug = "GettingElementsAtPosition";
   const newSlug = "GettingElementsAtPositionExercises";
-  const {step_name} = pagesProgress[oldSlug];
+  const oldProgress = pagesProgress[oldSlug] || {};
+  const newProgress = pagesProgress[newSlug] || {};
+  const {step_name} = oldProgress;
   if (!pages[oldSlug].step_names.includes(step_name)) {
-    pagesProgress[oldSlug] = {step_name: "final_text"};
-    pagesProgress[newSlug] = {step_name};
+    const updated_at = oldProgress.updated_at ?? null;
+    pagesProgress[oldSlug] = {...oldProgress, step_name: "final_text"};
+    pagesProgress[newSlug] = {...newProgress, step_name, updated_at};
     updates[`pagesProgress/${oldSlug}/step_name`] = "final_text";
     updates[`pagesProgress/${newSlug}/step_name`] = step_name;
+    if (updated_at) {
+      updates[`pagesProgress/${newSlug}/updated_at`] = updated_at;
+    }
   }
 }
 

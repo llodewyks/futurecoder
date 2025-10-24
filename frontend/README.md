@@ -1,5 +1,34 @@
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Azure Progress API Setup
+
+See `../docs/azure-progress-api.md` for a full backend blueprint.
+
+The frontend now talks to an Azure-hosted progress service instead of Firebase when the following environment variables are present (see `.env.local.example`):
+
+```
+REACT_APP_PROGRESS_API_BASE=https://<your-functions-app>.azurewebsites.net/api
+REACT_APP_PROGRESS_API_KEY=<optional-functions-key>
+REACT_APP_ADMIN_EMAILS=comma,separated,list,@or-domains
+```
+
+1. Copy `.env.local.example` to `.env.local` and fill in the values for your environment.
+2. Restart the React dev server after editing env files; Create React App only reads them on startup.
+3. The frontend expects the Azure API to expose:
+   - `GET /users/{id}` → returns a document containing at least `pagesProgress`, `pageSlug`, `developerMode`, `editorContent`.
+   - `PATCH /users/{id}` → merges the posted JSON into the stored user document.
+   - `GET /admin/progress` → returns either an array or object with `users` array; each entry should expose `userId`/`email` and `pagesProgress`.
+
+If these variables are omitted the app will fall back to the legacy Firebase implementation (or local storage only if Firebase is disabled).
+
+### Quick local test workflow
+
+1. Run the Azure Functions progress API locally with `REACT_APP_PROGRESS_API_BASE` pointing to the emulator URL (for example `http://localhost:7071/api`).
+2. Populate your backing data store (e.g. Cosmos DB or the emulator) with sample progress documents.
+3. From `frontend/`, run `npm install` and `npm start`.
+4. Sign in as a learner and navigate course content to confirm progress updates.
+5. Open `#admin` (or use the Admin Dashboard link) with an admin user to verify cross-user summaries.
+
 ## Available Scripts
 
 In the project directory, you can run:
