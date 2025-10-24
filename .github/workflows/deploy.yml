@@ -50,6 +50,10 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            REACT_APP_PROGRESS_API_BASE=${{ secrets.REACT_APP_PROGRESS_API_BASE }}
+            REACT_APP_PROGRESS_API_KEY=${{ secrets.REACT_APP_PROGRESS_API_KEY }}
+            REACT_APP_ADMIN_EMAILS=${{ secrets.REACT_APP_ADMIN_EMAILS }}
           tags: |
             ${{ steps.meta.outputs.tag_sha }}
             ${{ steps.meta.outputs.tag_latest }}

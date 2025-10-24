@@ -32,21 +32,35 @@ export async function fetchUserProgress(userId) {
   if (!progressApiAvailable || !userId) {
     return null;
   }
-  return request({
-    method: "GET",
-    url: `${baseUrl}/users/${encodeURIComponent(userId)}`,
-  });
+  try {
+    return await request({
+      method: "GET",
+      url: `${baseUrl}/users/${encodeURIComponent(userId)}`,
+    });
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return {};
+    }
+    throw error;
+  }
 }
 
 export async function patchUserProgress(userId, updates) {
   if (!progressApiAvailable || !userId || !updates || !Object.keys(updates).length) {
     return null;
   }
-  return request({
-    method: "PATCH",
-    url: `${baseUrl}/users/${encodeURIComponent(userId)}`,
-    data: updates,
-  });
+  try {
+    return await request({
+      method: "PATCH",
+      url: `${baseUrl}/users/${encodeURIComponent(userId)}`,
+      data: updates,
+    });
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function fetchAdminProgress() {
