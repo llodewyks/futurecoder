@@ -15,6 +15,7 @@ env:
   IMAGE_NAME: futurecoder                 # change if you prefer
   APP_NAME: PythonCoding                  # <-- your Azure Web App name
   RESOURCE_GROUP: MSAN-RG-Training        # <-- your Azure Resource Group
+  FUNCTION_APP_NAME: futurecoder-progress-api
   WEBSITES_PORT: "80"
   DOCKER_BUILDKIT: "1"
   BUILDKIT_PROGRESS: plain
@@ -77,6 +78,15 @@ jobs:
                        REACT_APP_PROGRESS_API_KEY=${{ secrets.REACT_APP_PROGRESS_API_KEY }} \
                        REACT_APP_ADMIN_EMAILS=${{ secrets.REACT_APP_ADMIN_EMAILS }}
 
+      - name: Configure Function App settings
+        run: |
+          az functionapp config appsettings set \
+            --name "${{ env.FUNCTION_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --settings CosmosConnection='${{ secrets.COSMOS_CONNECTION_STRING }}' \
+                       CORS_ALLOWED_ORIGIN=${{ secrets.FUNCTION_CORS_ALLOWED_ORIGIN }} \
+                       ADMIN_EMAIL_ALLOWLIST=${{ secrets.FUNCTION_ADMIN_EMAIL_ALLOWLIST }}
+
       # Derive a flag from secret (don't reference secrets in `if:` directly)
       - name: Determine if GHCR is private
         id: ghcr
@@ -110,6 +120,22 @@ jobs:
             --docker-registry-server-url "https://${{ env.REGISTRY }}" \
             --docker-registry-server-user "${{ github.actor }}" \
             --docker-registry-server-password "${{ secrets.GHCR_READ_TOKEN }}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Functions dependencies
+        working-directory: progress-api
+        run: npm ci
+
+      - name: Install Azure Functions Core Tools
+        run: sudo npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
+      - name: Publish Azure Functions
+        working-directory: progress-api
+        run: func azure functionapp publish "${{ env.FUNCTION_APP_NAME }}" --javascript
 
       # (Optional) Restart the app to pick the new image immediately
       - name: Restart Web App
