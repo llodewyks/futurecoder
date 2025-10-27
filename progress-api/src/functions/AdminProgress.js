@@ -28,7 +28,7 @@ app.http("AdminProgress", {
         jsonBody: {users},
       });
     } catch (error) {
-      context.log(`Failed to load admin progress: ${error.message}`);
+      context.log.error(`Failed to load admin progress: ${error.message}`, error);
       return withCors({
         status: 500,
         jsonBody: {error: "Failed to load admin progress"},

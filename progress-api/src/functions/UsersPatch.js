@@ -55,7 +55,12 @@ app.http("UsersPatch", {
     if (request.method === "OPTIONS") {
       return handleOptions();
     }
-    const userId = request.params.get("id") || request.query.get("id");
+    const userId =
+      (request.params && typeof request.params.get === "function" && request.params.get("id")) ||
+      (request.params && request.params.id) ||
+      (request.query && typeof request.query.get === "function" && request.query.get("id")) ||
+      (request.query && request.query.id) ||
+      null;
     if (!userId) {
       return withCors({
         status: 400,
@@ -79,7 +84,7 @@ app.http("UsersPatch", {
       await upsertUserDocument(next);
       return withCors({status: 204});
     } catch (error) {
-      context.log(`Failed to patch user ${userId}: ${error.message}`);
+      context.log.error(`Failed to patch user ${userId}: ${error.message}`, error);
       return withCors({
         status: 500,
         jsonBody: {error: "Failed to update user progress"},
