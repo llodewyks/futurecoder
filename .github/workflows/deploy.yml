@@ -83,9 +83,9 @@ jobs:
           az functionapp config appsettings set \
             --name "${{ env.FUNCTION_APP_NAME }}" \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --settings CosmosConnection='${{ secrets.COSMOS_CONNECTION_STRING }}' \
-                       CORS_ALLOWED_ORIGIN=${{ secrets.FUNCTION_CORS_ALLOWED_ORIGIN }} \
-                       ADMIN_EMAIL_ALLOWLIST=${{ secrets.FUNCTION_ADMIN_EMAIL_ALLOWLIST }}
+            --settings "CosmosConnection=${{ secrets.COSMOS_CONNECTION_STRING }}" \
+                       "CORS_ALLOWED_ORIGIN=${{ secrets.FUNCTION_CORS_ALLOWED_ORIGIN }}" \
+                       "ADMIN_EMAIL_ALLOWLIST=${{ secrets.FUNCTION_ADMIN_EMAIL_ALLOWLIST }}"
 
       # Derive a flag from secret (don't reference secrets in `if:` directly)
       - name: Determine if GHCR is private
