@@ -111,6 +111,8 @@ const initialState = {
 
 const {reducer, makeAction, setState, localState, statePush} = redact('book', initialState, {dispatched: true});
 
+let progressApiUserId = null;
+
 export {reducer as bookReducer, setState as bookSetState, localState as bookState, statePush as bookStatePush};
 
 const isLoaded = (state) => state.user.uid && state.pageSlugsList.length > 1
@@ -318,7 +320,7 @@ export const databaseRequest = wrapAsync(async function databaseRequest(method, 
 
 export const updateDatabase = (updates) => {
   if (progressApiAvailable) {
-    const userId = localState.user?.uid || localState.user?.email;
+    const userId = progressApiUserId;
     if (!userId) {
       return Promise.resolve();
     }
@@ -396,6 +398,7 @@ const loadUserAndPages = (state, previousUser = {}) => {
   updateDatabase(updates);
 
   state = {...state, user: {...state.user, pagesProgress, pageSlug, developerMode}};
+  progressApiUserId = state.user.uid || state.user.userId || state.user.email || null;
   if (!specialHash(hash)) {
     afterSetPage(pageSlug, state);
   }
