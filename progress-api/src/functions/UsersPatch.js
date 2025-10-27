@@ -1,5 +1,6 @@
 const {app} = require("@azure/functions");
 const {readUserDocument, upsertUserDocument} = require("../shared/cosmos");
+const {withCors, handleOptions} = require("../shared/http");
 
 const parseRequestBody = async (request) => {
   try {
@@ -47,24 +48,27 @@ const ensureDefaults = (userId, document) => {
 };
 
 app.http("UsersPatch", {
-  methods: ["PATCH"],
+  methods: ["PATCH", "OPTIONS"],
   authLevel: "anonymous",
   route: "users/{id}",
   handler: async (request, context) => {
+    if (request.method === "OPTIONS") {
+      return handleOptions();
+    }
     const userId = request.params.get("id") || request.query.get("id");
     if (!userId) {
-      return {
+      return withCors({
         status: 400,
         jsonBody: {error: "Missing required path parameter: id"},
-      };
+      });
     }
 
     const updates = await parseRequestBody(request);
     if (!Object.keys(updates).length) {
-      return {
+      return withCors({
         status: 400,
         jsonBody: {error: "Request body must be a JSON object of updates"},
-      };
+      });
     }
 
     context.log(`Applying ${Object.keys(updates).length} updates for user "${userId}"`);
@@ -73,13 +77,13 @@ app.http("UsersPatch", {
       const current = ensureDefaults(userId, await readUserDocument(userId));
       const next = ensureDefaults(userId, applyPatch(current, updates));
       await upsertUserDocument(next);
-      return {status: 204};
+      return withCors({status: 204});
     } catch (error) {
       context.log(`Failed to patch user ${userId}: ${error.message}`);
-      return {
+      return withCors({
         status: 500,
         jsonBody: {error: "Failed to update user progress"},
-      };
+      });
     }
   },
 });

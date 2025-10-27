@@ -1,5 +1,6 @@
 const {app} = require("@azure/functions");
 const {listAllUsers} = require("../shared/cosmos");
+const {withCors, handleOptions} = require("../shared/http");
 
 const normalise = (document = {}) => ({
   userId: document.userId || document.id,
@@ -13,22 +14,25 @@ const normalise = (document = {}) => ({
 });
 
 app.http("AdminProgress", {
-  methods: ["GET"],
+  methods: ["GET", "OPTIONS"],
   authLevel: "anonymous",
   route: "admin/progress",
-  handler: async (_request, context) => {
+  handler: async (request, context) => {
+    if (request.method === "OPTIONS") {
+      return handleOptions();
+    }
     try {
       const users = (await listAllUsers()).map(normalise);
-      return {
+      return withCors({
         status: 200,
         jsonBody: {users},
-      };
+      });
     } catch (error) {
       context.log(`Failed to load admin progress: ${error.message}`);
-      return {
+      return withCors({
         status: 500,
         jsonBody: {error: "Failed to load admin progress"},
-      };
+      });
     }
   },
 });
