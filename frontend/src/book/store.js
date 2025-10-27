@@ -318,9 +318,22 @@ export const databaseRequest = wrapAsync(async function databaseRequest(method, 
   return response.data;
 });
 
-export const updateDatabase = (updates) => {
+const resolveUserId = (override) => {
+  if (typeof override === "string") {
+    return override;
+  }
+  if (override && typeof override === "object") {
+    return override.userId || override.uid || override.email || null;
+  }
+  return null;
+};
+
+export const updateDatabase = (updates, userContext) => {
   if (progressApiAvailable) {
-    const userId = progressApiUserId;
+    const explicit = resolveUserId(userContext);
+    const userId = explicit
+      || progressApiUserId
+      || resolveUserId(localState.user);
     if (!userId) {
       return Promise.resolve();
     }
@@ -395,7 +408,8 @@ const loadUserAndPages = (state, previousUser = {}) => {
 
   migrateUserState(pages, pagesProgress, updates);
 
-  updateDatabase(updates);
+  const userId = state.user.uid || state.user.userId || state.user.email || previousUser.uid || previousUser.userId || previousUser.email || null;
+  updateDatabase(updates, userId);
 
   state = {...state, user: {...state.user, pagesProgress, pageSlug, developerMode}};
   progressApiUserId = state.user.uid || state.user.userId || state.user.email || null;
