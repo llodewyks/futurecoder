@@ -13,10 +13,10 @@ const normalise = (document = {}) => ({
     : {},
 });
 
-app.http("AdminProgress", {
+app.http("AdminSummary", {
   methods: ["GET", "OPTIONS"],
   authLevel: "anonymous",
-  route: "admin/progress",
+  route: "admin/progress/summary",
   handler: async (request, context) => {
     if (request.method === "OPTIONS") {
       return handleOptions();
