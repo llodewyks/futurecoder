@@ -4,7 +4,8 @@
   "description": "Progress API for FutureCoder",
   "scripts": {
     "start": "func start",
-    "build": "npm install && tsc",
+    "build": "tsc",
+    "build:azure": "./functionapp-build.sh",
     "watch": "tsc -w",
     "prestart": "npm run build",
     "test": "echo \"No tests yet...\""

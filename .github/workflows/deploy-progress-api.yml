@@ -41,11 +41,13 @@ jobs:
         npm ci
         npm install -g typescript
 
+    - name: Make build script executable
+      working-directory: ./progress-api
+      run: chmod +x functionapp-build.sh
+
     - name: Build the project
       working-directory: ./progress-api
-      run: |
-        npm run build
-        npm prune --production
+      run: ./functionapp-build.sh
 
     - name: 'Run Azure Functions Action'
       uses: Azure/functions-action@v1
