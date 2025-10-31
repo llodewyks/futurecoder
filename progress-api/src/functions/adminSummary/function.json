@@ -6,7 +6,7 @@
       "direction": "in",
       "name": "request",
       "methods": ["get", "options"],
-      "route": "adminSummary"
+      "route": "admin/progress/summary"
     },
     {
       "type": "http",
