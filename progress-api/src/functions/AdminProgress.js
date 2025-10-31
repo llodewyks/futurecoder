@@ -37,8 +37,23 @@ const adminSummary = {
   },
 };
 
-// Register the function
-app.http('adminSummary', adminSummary);
-
-// Export the app instance for Azure Functions v4 model
-module.exports = app;
+// Export the function directly for Azure Functions v4 model
+module.exports = async function (context, req) {
+  if (req.method === 'OPTIONS') {
+    return handleOptions();
+  }
+  
+  try {
+    const users = (await listAllUsers()).map(normalise);
+    return withCors({
+      status: 200,
+      jsonBody: { users },
+    });
+  } catch (error) {
+    context.log.error(`Failed to load admin progress: ${error.message}`, error);
+    return withCors({
+      status: 500,
+      jsonBody: { error: "Failed to load admin progress" },
+    });
+  }
+};
