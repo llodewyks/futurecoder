@@ -41,13 +41,34 @@ jobs:
         npm ci
         npm install -g typescript
 
-    - name: Make build script executable
-      working-directory: ./progress-api
-      run: chmod +x functionapp-build.sh
-
     - name: Build the project
       working-directory: ./progress-api
-      run: ./functionapp-build.sh
+      run: |
+        npm run build
+        
+        # Create the functions directory structure
+        mkdir -p dist/functions/adminSummary
+        
+        # Copy function files
+        cp -r dist/src/functions/adminSummary/* dist/functions/adminSummary/
+        cp src/functions/adminSummary/function.json dist/functions/adminSummary/
+        
+        # Copy root files
+        cp host.json dist/
+        cp package*.json dist/
+        
+        # Create a symlink to maintain compatibility
+        cd dist
+        ln -s src/functions functions
+        cd ..
+        
+        # List files for debugging
+        echo "=== Root directory ==="
+        ls -la
+        echo "=== dist directory ==="
+        ls -la dist/
+        echo "=== dist/functions directory ==="
+        ls -la dist/functions/
 
     - name: 'Run Azure Functions Action'
       uses: Azure/functions-action@v1

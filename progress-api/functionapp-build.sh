@@ -1,27 +1,38 @@
 #!/bin/bash
 
-# Clean the dist directory
+# Clean and prepare
+echo "Cleaning previous build..."
 rm -rf dist
 
 # Install dependencies
+echo "Installing dependencies..."
 npm ci
 
 # Build the project
+echo "Building project..."
 npm run build
 
 # Create the function directory structure
-mkdir -p dist/src/functions/adminSummary
+echo "Creating directory structure..."
+mkdir -p dist/functions/adminSummary
 
 # Copy function files
-cp -r dist/functions/adminSummary/* dist/src/functions/adminSummary/
-cp src/functions/adminSummary/function.json dist/src/functions/adminSummary/
+echo "Copying function files..."
+cp -r dist/src/functions/adminSummary/* dist/functions/adminSummary/
+cp src/functions/adminSummary/function.json dist/functions/adminSummary/
 
-# Copy other necessary files
-cp host.json dist/
-cp package*.json dist/
-cp -r node_modules dist/
+# Move files to root for Azure Functions
+echo "Preparing for Azure Functions..."
+cp -r dist/functions/* ./
+cp host.json ./
+cp package*.json ./
 
-# Create a dummy function to ensure the directory exists
-mkdir -p dist/src/functions/adminSummary
+# Create a symbolic link to move functions to the root
+# This is needed because Azure Functions expects the functions to be in the root
+ln -s src/functions functions
+
+# Install production dependencies
+echo "Installing production dependencies..."
+npm install --production
 
 echo "Build completed successfully"
