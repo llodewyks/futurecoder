@@ -92,11 +92,41 @@ jobs:
         echo "=== function.json content ==="
         cat dist/adminSummary/function.json
 
-    - name: 'Run Azure Functions Action'
+    - name: Create deployment package
+      working-directory: ./progress-api
+      run: |
+        # Create the deployment directory
+        mkdir -p deployment
+        
+        # Copy the built files
+        cp -r dist/src/* deployment/
+        
+        # Copy function files
+        mkdir -p deployment/functions/adminSummary
+        cp -r src/functions/adminSummary/* deployment/functions/adminSummary/
+        
+        # Copy root files
+        cp host.json deployment/
+        cp package*.json deployment/
+        
+        # Create the zip file
+        cd deployment
+        zip -r ../deployment.zip .
+        cd ..
+        
+        # List files for debugging
+        echo "=== Deployment package structure ==="
+        ls -la deployment/
+        echo "=== deployment/functions/ ==="
+        ls -la deployment/functions/
+        echo "=== deployment/functions/adminSummary/ ==="
+        ls -la deployment/functions/adminSummary/
+        
+    - name: Deploy to Azure Functions
       uses: Azure/functions-action@v1
       with:
         app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-        package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE }}
+        package: deployment.zip
         enable-oryx-build: false
         scm-do-build-during-deployment: false
         publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
