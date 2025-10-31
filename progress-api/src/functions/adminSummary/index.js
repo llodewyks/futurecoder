@@ -1,6 +1,6 @@
 const { app } = require("@azure/functions");
-const { listAllUsers } = require("../shared/cosmos");
-const { withCors, handleOptions } = require("../shared/http");
+const { listAllUsers } = require("../../shared/cosmos");
+const { withCors, handleOptions } = require("../../shared/http");
 
 const normalise = (document = {}) => ({
   userId: document.userId || document.id,
@@ -40,6 +40,7 @@ async function adminSummary(request, context) {
 app.http('adminSummary', {
   methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
+  route: 'adminSummary',
   handler: adminSummary
 });
 
