@@ -50,16 +50,12 @@ jobs:
         # Install dependencies and build
         npm run build
         
-        # Create the functions directory structure in the root
-        mkdir -p dist/functions/adminSummary
+        # Create the function directory in the root
+        mkdir -p dist/adminSummary
         
-        # Copy function files to the root functions directory
-        cp -r dist/src/functions/adminSummary/* dist/functions/adminSummary/
-        cp src/functions/adminSummary/function.json dist/functions/adminSummary/
-        
-        # Move the function files to the root of the deployment package
-        mkdir -p dist/functions
-        mv dist/functions/adminSummary dist/
+        # Copy the built function files
+        cp -r dist/src/functions/adminSummary/* dist/adminSummary/
+        cp src/functions/adminSummary/function.json dist/adminSummary/
         
         # Copy root files
         cp host.json dist/
@@ -70,8 +66,6 @@ jobs:
         ls -la
         echo "=== dist directory ==="
         ls -la dist/
-        echo "=== dist/functions directory ==="
-        ls -la dist/functions/
         echo "=== dist/adminSummary directory ==="
         ls -la dist/adminSummary/
 
