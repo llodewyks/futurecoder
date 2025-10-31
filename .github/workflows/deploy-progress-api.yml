@@ -1,0 +1,51 @@
+name: Deploy Progress API to Azure Functions
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'progress-api/**'
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_NAME: futurecoder-progress-api-cub7aje5cae5a2fa  # Your function app name
+  AZURE_FUNCTIONAPP_PACKAGE: 'progress-api'
+  NODE_VERSION: '18.x'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - name: 'Checkout repository'
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      working-directory: ./progress-api
+      run: npm install
+
+    - name: 'Run npm build'
+      working-directory: ./progress-api
+      run: npm run build --if-present
+
+    - name: 'Run Azure Functions Action'
+      uses: Azure/functions-action@v1
+      id: fa
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE }}
+        enable-oryx-build: true
+        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+        scm-do-build-during-deployment: true
+        enable-oryx-build: true
