@@ -53,9 +53,30 @@ jobs:
         # Create the function directory in the root
         mkdir -p dist/adminSummary
         
-        # Copy the built function files
+        # Copy the built function files to the root
         cp -r dist/src/functions/adminSummary/* dist/adminSummary/
         cp src/functions/adminSummary/function.json dist/adminSummary/
+        
+        # Ensure the function.json has the correct scriptFile path
+        echo "Updating function.json scriptFile path..."
+        echo '{
+          "bindings": [
+            {
+              "authLevel": "anonymous",
+              "type": "httpTrigger",
+              "direction": "in",
+              "name": "request",
+              "methods": ["get", "options"],
+              "route": "adminSummary"
+            },
+            {
+              "type": "http",
+              "direction": "out",
+              "name": "$return"
+            }
+          ],
+          "scriptFile": "../dist/src/functions/adminSummary/index.js"
+        }' > dist/adminSummary/function.json
         
         # Copy root files
         cp host.json dist/
@@ -68,6 +89,8 @@ jobs:
         ls -la dist/
         echo "=== dist/adminSummary directory ==="
         ls -la dist/adminSummary/
+        echo "=== function.json content ==="
+        cat dist/adminSummary/function.json
 
     - name: 'Run Azure Functions Action'
       uses: Azure/functions-action@v1

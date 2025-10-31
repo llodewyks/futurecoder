@@ -8,7 +8,10 @@
       }
     },
     "logLevel": {
-      "default": "Information"
+      "default": "Information",
+      "Host.Results": "Information",
+      "Function": "Information",
+      "Host.Aggregator": "Information"
     }
   },
   "extensionBundle": {
@@ -20,5 +23,6 @@
       "routePrefix": "api"
     }
   },
-  "functionTimeout": "00:10:00"
+  "functionTimeout": "00:10:00",
+  "functions": ["adminSummary"]
 }
