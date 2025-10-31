@@ -12,13 +12,9 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: futurecoder-progress-api-cub7aje5cae5a2fa  # Your function app name
+  AZURE_FUNCTIONAPP_NAME: futurecoder-progress-api-cub7aje5cae5a2fa
   AZURE_FUNCTIONAPP_PACKAGE: 'progress-api'
   NODE_VERSION: '18.x'
-
-permissions:
-  contents: read
-  id-token: write
 
 jobs:
   build-and-deploy:
@@ -27,10 +23,10 @@ jobs:
 
     steps:
     - name: 'Checkout repository'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v3
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
@@ -46,19 +42,22 @@ jobs:
       run: |
         # Clean previous builds
         rm -rf dist
+        rm -rf deployment
+        rm -f deployment.zip
         
         # Install dependencies and build
         npm run build
         
-        # Create the function directory in the root
-        mkdir -p dist/adminSummary
+        # Create the deployment directory structure
+        mkdir -p deployment/functions/adminSummary
         
-        # Copy the built function files to the root
-        cp -r dist/src/functions/adminSummary/* dist/adminSummary/
-        cp src/functions/adminSummary/function.json dist/adminSummary/
+        # Copy the built files
+        cp -r dist/src/* deployment/
         
-        # Ensure the function.json has the correct scriptFile path
-        echo "Updating function.json scriptFile path..."
+        # Copy function files
+        cp -r src/functions/adminSummary/* deployment/functions/adminSummary/
+        
+        # Update function.json with correct paths
         echo '{
           "bindings": [
             {
@@ -75,62 +74,34 @@ jobs:
               "name": "$return"
             }
           ],
-          "scriptFile": "../dist/src/functions/adminSummary/index.js"
-        }' > dist/adminSummary/function.json
-        
-        # Copy root files
-        cp host.json dist/
-        cp package*.json dist/
-        
-        # List files for debugging
-        echo "=== Root directory ==="
-        ls -la
-        echo "=== dist directory ==="
-        ls -la dist/
-        echo "=== dist/adminSummary directory ==="
-        ls -la dist/adminSummary/
-        echo "=== function.json content ==="
-        cat dist/adminSummary/function.json
-
-    - name: Create deployment package
-      working-directory: ./progress-api
-      run: |
-        # Create the deployment directory
-        mkdir -p deployment
-        
-        # Copy the built files
-        cp -r dist/src/* deployment/
-        
-        # Copy function files
-        mkdir -p deployment/functions/adminSummary
-        cp -r src/functions/adminSummary/* deployment/functions/adminSummary/
+          "scriptFile": "../dist/functions/adminSummary/index.js"
+        }' > deployment/functions/adminSummary/function.json
         
         # Copy root files
         cp host.json deployment/
         cp package*.json deployment/
         
-        # Create the zip file
-        cd deployment
-        zip -r ../deployment.zip .
-        cd ..
-        
         # List files for debugging
-        echo "=== Deployment package structure ==="
+        echo "=== Deployment directory structure ==="
         ls -la deployment/
         echo "=== deployment/functions/ ==="
         ls -la deployment/functions/
         echo "=== deployment/functions/adminSummary/ ==="
         ls -la deployment/functions/adminSummary/
-        
-    - name: Deploy to Azure Functions
+
+    - name: 'Run Azure Functions Action'
       uses: Azure/functions-action@v1
       with:
         app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-        package: deployment.zip
+        package: 'deployment'
         enable-oryx-build: false
         scm-do-build-during-deployment: false
         publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-        
-    - name: Verify deployment
-      run: |
-        echo "Deployment completed. Check the Azure Portal for function details."
+
+    - name: 'Set App Settings'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az functionapp config appsettings set --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
+            --resource-group futurecoder-progress-api \
+            --settings "WEBSITE_RUN_FROM_PACKAGE=0"
