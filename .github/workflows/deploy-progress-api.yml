@@ -5,6 +5,10 @@ on:
     branches: [ main ]
     paths:
       - 'progress-api/**'
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.txt'
+      - '**/.gitignore'
   workflow_dispatch:
 
 env:
@@ -33,18 +37,25 @@ jobs:
 
     - name: Install dependencies
       working-directory: ./progress-api
-      run: npm install
+      run: |
+        npm ci
+        npm install -g typescript
 
-    - name: 'Run npm build'
+    - name: Build the project
       working-directory: ./progress-api
-      run: npm run build --if-present
+      run: |
+        npm run build
+        npm prune --production
 
     - name: 'Run Azure Functions Action'
       uses: Azure/functions-action@v1
-      id: fa
       with:
         app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
         package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE }}
-        enable-oryx-build: true
+        enable-oryx-build: false
+        scm-do-build-during-deployment: false
         publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-        scm-do-build-during-deployment: true
+        
+    - name: Verify deployment
+      run: |
+        echo "Deployment completed. Check the Azure Portal for function details."

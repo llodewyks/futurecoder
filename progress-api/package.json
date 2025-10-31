@@ -1,14 +1,24 @@
 {
   "name": "progress-api",
   "version": "1.0.0",
-  "description": "",
+  "description": "Progress API for FutureCoder",
   "scripts": {
     "start": "func start",
+    "build": "npm install && tsc",
+    "watch": "tsc -w",
+    "prestart": "npm run build",
     "test": "echo \"No tests yet...\""
   },
   "dependencies": {
     "@azure/cosmos": "^4.7.0",
     "@azure/functions": "^4.0.0"
   },
-  "main": "src/{index.js,functions/*.js}"
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "typescript": "^5.0.0"
+  },
+  "main": "dist/src/index.js",
+  "engines": {
+    "node": ">=18.x"
+  }
 }
