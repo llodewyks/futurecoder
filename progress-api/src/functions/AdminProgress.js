@@ -14,32 +14,8 @@ const normalise = (document = {}) => ({
 });
 
 // Define the function
-const adminSummary = {
-  methods: ["GET", "OPTIONS"],
-  authLevel: "anonymous",
-  handler: async (request, context) => {
-    if (request.method === "OPTIONS") {
-      return handleOptions();
-    }
-    try {
-      const users = (await listAllUsers()).map(normalise);
-      return withCors({
-        status: 200,
-        jsonBody: { users },
-      });
-    } catch (error) {
-      context.log.error(`Failed to load admin progress: ${error.message}`, error);
-      return withCors({
-        status: 500,
-        jsonBody: { error: "Failed to load admin progress" },
-      });
-    }
-  },
-};
-
-// Export the function directly for Azure Functions v4 model
-module.exports = async function (context, req) {
-  if (req.method === 'OPTIONS') {
+async function adminSummary(request, context) {
+  if (request.method === "OPTIONS") {
     return handleOptions();
   }
   
@@ -56,4 +32,7 @@ module.exports = async function (context, req) {
       jsonBody: { error: "Failed to load admin progress" },
     });
   }
-};
+}
+
+// Export the function for Azure Functions v4
+module.exports = adminSummary;
