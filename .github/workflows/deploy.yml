@@ -126,17 +126,6 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install Functions dependencies
-        working-directory: progress-api
-        run: npm ci
-
-      - name: Install Azure Functions Core Tools
-        run: sudo npm install -g azure-functions-core-tools@4 --unsafe-perm true
-
-      - name: Publish Azure Functions
-        working-directory: progress-api
-        run: func azure functionapp publish "${{ env.FUNCTION_APP_NAME }}" --javascript
-
       # (Optional) Restart the app to pick the new image immediately
       - name: Restart Web App
         run: |
