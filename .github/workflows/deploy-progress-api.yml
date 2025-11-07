@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: futurecoder-progress-api-cub7aje5cae5a2fa
+  AZURE_FUNCTIONAPP_NAME: futurecoder-progress-api
   AZURE_FUNCTIONAPP_PACKAGE: 'progress-api'
   NODE_VERSION: '18.x'
 
@@ -46,14 +46,15 @@ jobs:
         popd
         ls -la functionapp.zip
 
-    - name: 'Run Azure Functions Action'
-      uses: Azure/functions-action@v1
+    - name: 'Deploy package via CLI'
+      uses: azure/CLI@v1
       with:
-        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-        package: './progress-api/functionapp.zip'
-        enable-oryx-build: false
-        scm-do-build-during-deployment: false
-        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+        inlineScript: |
+          az functionapp deployment source config-zip \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
+            --resource-group MSAN-RG-Training \
+            --src ./progress-api/functionapp.zip \
+            --build-remote false
 
     - name: 'Set App Settings'
       uses: azure/CLI@v1
@@ -61,4 +62,4 @@ jobs:
         inlineScript: |
           az functionapp config appsettings set --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
             --resource-group MSAN-RG-Training \
-            --settings "WEBSITE_RUN_FROM_PACKAGE=0"
+            --settings "WEBSITE_RUN_FROM_PACKAGE=1"
