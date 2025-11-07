@@ -34,7 +34,7 @@ jobs:
     - name: Build the project
       working-directory: ./progress-api
       run: |
-        rm -rf dist deployment
+        rm -rf dist deployment functionapp.zip
         npm run build
         mkdir -p deployment
         cp -R dist/* deployment/
@@ -42,15 +42,15 @@ jobs:
         cp package*.json deployment/
         pushd deployment
         npm ci --omit=dev
+        zip -r ../functionapp.zip .
         popd
-        echo "=== Deployment directory structure ==="
-        ls -la deployment/
+        ls -la functionapp.zip
 
     - name: 'Run Azure Functions Action'
       uses: Azure/functions-action@v1
       with:
         app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-        package: './progress-api/deployment'
+        package: './progress-api/functionapp.zip'
         enable-oryx-build: false
         scm-do-build-during-deployment: false
         publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
