@@ -33,61 +33,22 @@ jobs:
 
     - name: Install dependencies
       working-directory: ./progress-api
-      run: |
-        npm ci
-        npm install -g typescript
+      run: npm ci
 
     - name: Build the project
       working-directory: ./progress-api
       run: |
-        # Clean previous builds
-        rm -rf dist
-        rm -rf deployment
-        rm -f deployment.zip
-        
-        # Install dependencies and build
+        rm -rf dist deployment
         npm run build
-        
-        # Create the deployment directory structure
-        mkdir -p deployment/functions/adminSummary
-        
-        # Copy the built files
-        cp -r dist/src/* deployment/
-        
-        # Copy function files
-        cp -r src/functions/adminSummary/* deployment/functions/adminSummary/
-        
-        # Update function.json with correct paths
-        echo '{
-          "bindings": [
-            {
-              "authLevel": "anonymous",
-              "type": "httpTrigger",
-              "direction": "in",
-              "name": "request",
-              "methods": ["get", "options"],
-              "route": "adminSummary"
-            },
-            {
-              "type": "http",
-              "direction": "out",
-              "name": "$return"
-            }
-          ],
-          "scriptFile": "../dist/functions/adminSummary/index.js"
-        }' > deployment/functions/adminSummary/function.json
-        
-        # Copy root files
+        mkdir -p deployment
+        cp -R dist/* deployment/
         cp host.json deployment/
         cp package*.json deployment/
-        
-        # List files for debugging
+        pushd deployment
+        npm ci --omit=dev
+        popd
         echo "=== Deployment directory structure ==="
         ls -la deployment/
-        echo "=== deployment/functions/ ==="
-        ls -la deployment/functions/
-        echo "=== deployment/functions/adminSummary/ ==="
-        ls -la deployment/functions/adminSummary/
 
     - name: 'Run Azure Functions Action'
       uses: Azure/functions-action@v1

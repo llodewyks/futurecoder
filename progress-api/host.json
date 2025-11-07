@@ -23,6 +23,5 @@
       "routePrefix": "api"
     }
   },
-  "functionTimeout": "00:10:00",
-  "functions": ["adminSummary"]
+  "functionTimeout": "00:10:00"
 }

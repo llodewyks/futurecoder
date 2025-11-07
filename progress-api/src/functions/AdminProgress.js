@@ -1,6 +1,6 @@
-const { app } = require("@azure/functions");
-const { listAllUsers } = require("../shared/cosmos");
-const { withCors, handleOptions } = require("../shared/http");
+const {app} = require("@azure/functions");
+const {listAllUsers} = require("../shared/cosmos");
+const {withCors, handleOptions} = require("../shared/http");
 
 const normalise = (document = {}) => ({
   userId: document.userId || document.id,
@@ -13,35 +13,31 @@ const normalise = (document = {}) => ({
     : {},
 });
 
-// Define the function
-async function adminSummary(request, context) {
-  context.log('HTTP trigger function processed a request.');
-  
+async function adminProgress(request, context) {
+  context.log("Fetching admin summary");
+
   if (request.method === "OPTIONS") {
     return handleOptions();
   }
-  
+
   try {
     const users = (await listAllUsers()).map(normalise);
     return withCors({
       status: 200,
-      jsonBody: { users },
+      jsonBody: {users},
     });
   } catch (error) {
-    context.error(`Failed to load admin progress: ${error.message}`, error);
+    context.log.error(`Failed to load admin progress: ${error.message}`, error);
     return withCors({
       status: 500,
-      jsonBody: { error: "Failed to load admin progress" },
+      jsonBody: {error: "Failed to load admin progress"},
     });
   }
 }
 
-// Register the function with Azure Functions v4 model
-app.http('adminSummary', {
-  methods: ['GET', 'OPTIONS'],
-  authLevel: 'anonymous',
-  handler: adminSummary
+app.http("AdminProgress", {
+  methods: ["GET", "OPTIONS"],
+  authLevel: "anonymous",
+  route: "admin/progress",
+  handler: adminProgress,
 });
-
-// Export the app
-module.exports = app;
