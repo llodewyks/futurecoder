@@ -1,4 +1,4 @@
-ame: Build & Deploy container to Azure Web App (OIDC, GHCR)
+name: Build & Deploy container to Azure Web App (OIDC, GHCR)
 
 on:
   push:
