@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+# This script mirrors the GitHub Actions build: keep it updated if deployment requirements change.
+
 echo "Cleaning previous build artifacts..."
 rm -rf dist deployment
 
