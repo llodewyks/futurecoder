@@ -41,7 +41,7 @@ jobs:
         rm -rf dist deployment functionapp.zip
         npm run build
         mkdir -p deployment
-        cp -R dist/* deployment/
+        cp -R dist deployment/
         cp host.json deployment/
         cp package*.json deployment/
         pushd deployment
