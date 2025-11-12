@@ -18,7 +18,7 @@
     "@types/node": "^18.x",
     "typescript": "^5.0.0"
   },
-  "main": "dist/function_app.js",
+  "main": "function_app.js",
   "engines": {
     "node": ">=18.x"
   }

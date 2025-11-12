@@ -14,7 +14,7 @@ npm run build
 
 echo "Creating deployment bundle..."
 mkdir -p deployment
-cp -R dist deployment/
+cp -R dist/* deployment/
 cp host.json deployment/
 cp package*.json deployment/
 
