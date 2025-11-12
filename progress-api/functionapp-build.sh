@@ -17,6 +17,7 @@ mkdir -p deployment
 cp -R dist/* deployment/
 cp host.json deployment/
 cp package*.json deployment/
+cp web.config deployment/
 
 echo "Installing production dependencies into deployment bundle..."
 pushd deployment >/dev/null

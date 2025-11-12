@@ -44,6 +44,7 @@ jobs:
         cp -R dist/* deployment/
         cp host.json deployment/
         cp package*.json deployment/
+        cp web.config deployment/
         pushd deployment
         npm ci --omit=dev
         zip -r ../functionapp.zip .
